@@ -42,3 +42,6 @@ def set_batch_status(batch_id: str, status: str) -> None:
 
 def update_item(item_id: str, fields: dict) -> None:
     get_db().job_items.update_one({"item_id": item_id}, {"$set": fields})
+
+def find_item(item_id: str) -> dict | None:
+    return get_db().job_items.find_one({"item_id": item_id}, {"_id": 0})
