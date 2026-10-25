@@ -7,6 +7,7 @@ from app.services import batch_service
 from app.services import processing_service
 from app.services.batch_service import UnknownDocumentError
 from app.services.processing_service import BatchNotFoundError, BatchNotPendingError
+from app.integrations.ocr_service import OcrService, get_ocr_service
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
@@ -39,6 +40,7 @@ def process_batch(
     batch_id: str,
     background_tasks: BackgroundTasks,
     extractor: ExtractionService = Depends(get_extraction_service),
+    ocr_service: OcrService = Depends(get_ocr_service),
 ):
     try:
         processing_service.start_processing(batch_id)
@@ -46,5 +48,5 @@ def process_batch(
         raise HTTPException(status_code=404, detail="Batch not found")
     except BatchNotPendingError:
         raise HTTPException(status_code=409, detail="Batch has already been started")
-    background_tasks.add_task(processing_service.process_batch, batch_id, extractor)
+    background_tasks.add_task(processing_service.process_batch, batch_id, extractor, ocr_service)
     return {"batch_id": batch_id, "status": "processing"}
