@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from app.integrations.extraction_service import ExtractionService, get_extraction_service
 from app.integrations.document_provider import DocumentProvider, get_document_provider
 from app.schemas.batch import BatchCreate, BatchDetailResponse, BatchResponse
 from app.services import batch_service
+from app.services import processing_service
 from app.services.batch_service import UnknownDocumentError
+from app.services.processing_service import BatchNotFoundError, BatchNotPendingError
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
@@ -30,3 +33,18 @@ def get_batch(batch_id: str):
     if batch is None:
         raise HTTPException(status_code=404, detail="Batch not found")
     return batch
+
+@router.post("/{batch_id}/process", status_code=202)
+def process_batch(
+    batch_id: str,
+    background_tasks: BackgroundTasks,
+    extractor: ExtractionService = Depends(get_extraction_service),
+):
+    try:
+        processing_service.start_processing(batch_id)
+    except BatchNotFoundError:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    except BatchNotPendingError:
+        raise HTTPException(status_code=409, detail="Batch has already been started")
+    background_tasks.add_task(processing_service.process_batch, batch_id, extractor)
+    return {"batch_id": batch_id, "status": "processing"}
