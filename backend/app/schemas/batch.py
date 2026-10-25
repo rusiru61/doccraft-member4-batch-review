@@ -39,6 +39,7 @@ class JobItemResponse(BaseModel):
     detected_language: str
     status: ItemStatus
     error_message: str | None = None
+    processing_order: int | None = None
     created_at: datetime
 
 
