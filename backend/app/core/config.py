@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db_name: str = "doccraft_member4"
     reliability_threshold: float = 0.80
+    mock_processing_delay_seconds: float = 0.5
 
     model_config = SettingsConfigDict(env_file=".env")
 
