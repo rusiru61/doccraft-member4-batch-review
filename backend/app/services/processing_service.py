@@ -2,6 +2,9 @@ import logging
 
 from app.integrations.extraction_service import ExtractionError, ExtractionService
 from app.repositories import batch_repository as repo
+from app.integrations.ocr_service import OcrService
+from app.services import review_service
+from app.services.reliability_service import calculate_reliability_score
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ def _mark_failed(item_id: str, message: str) -> None:
     repo.update_item(item_id, {"status": "failed", "error_message": message})
 
 
-def process_batch(batch_id: str, extractor: ExtractionService) -> None:
+def process_batch(batch_id: str, extractor: ExtractionService, ocr_service: OcrService) -> None:
     items = order_items(repo.list_items(batch_id))
     logger.info("Batch %s: processing %d items", batch_id, len(items))
 
@@ -39,7 +42,15 @@ def process_batch(batch_id: str, extractor: ExtractionService) -> None:
         repo.update_item(item_id, {"status": "processing", "processing_order": position})
         try:
             result = extractor.extract(item["document_id"])
-            repo.update_item(item_id, {"status": "completed", "extraction": result.model_dump()})
+            ocr = ocr_service.get_ocr_confidence(item["document_id"], item.get("is_scanned", False))
+            score = calculate_reliability_score(ocr, result.ai_confidence, result.validation_passed)
+            repo.update_item(item_id, {
+                "status": "completed",
+                "extraction": result.model_dump(),
+                "ocr_confidence": ocr,
+                "reliability_score": score,
+            })
+            review_service.flag_if_needed(item, result, score)
         except ExtractionError as exc:  # expected kind of failure
             logger.warning("Batch %s: %s failed: %s", batch_id, item["document_id"], exc)
             _mark_failed(item_id, str(exc))

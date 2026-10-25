@@ -41,6 +41,7 @@ class JobItemResponse(BaseModel):
     error_message: str | None = None
     processing_order: int | None = None
     created_at: datetime
+    reliability_score: float | None = None
 
 
 class BatchProgress(BaseModel):
