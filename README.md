@@ -16,3 +16,16 @@ This module is responsible for managing the document processing workflow within 
 ## Module Owner
 
 Member 4
+
+
+## Reliability Score Calculation
+
+The reliability score is calculated using a weighted combination of OCR confidence, AI extraction confidence, and validation results.
+
+Reliability Score = (OCR × 0.3) + (AI Confidence × 0.5) + (Validation × 0.2)
+
+### Weight Justification
+
+- **OCR (0.3):** OCR confidence measures text recognition quality, but recognized text may still contain extraction errors, so it receives a moderate weight.
+- **AI Confidence (0.5):** AI confidence is the most direct indicator of extraction quality and therefore carries the highest weight.
+- **Validation (0.2):** Validation confirms whether extracted data satisfies predefined rules, providing an additional verification layer but not replacing extraction confidence.
