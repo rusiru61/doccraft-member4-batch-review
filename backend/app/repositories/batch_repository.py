@@ -26,3 +26,19 @@ def count_by_status(batch_id: str) -> dict[str, int]:
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
     ]
     return {row["_id"]: row["count"] for row in get_db().job_items.aggregate(pipeline)}
+
+def try_mark_batch_processing(batch_id: str) -> bool:
+    """Compare-and-set: succeeds only if the batch is still 'pending'."""
+    result = get_db().batches.update_one(
+        {"batch_id": batch_id, "status": "pending"},
+        {"$set": {"status": "processing"}},
+    )
+    return result.modified_count == 1
+
+
+def set_batch_status(batch_id: str, status: str) -> None:
+    get_db().batches.update_one({"batch_id": batch_id}, {"$set": {"status": status}})
+
+
+def update_item(item_id: str, fields: dict) -> None:
+    get_db().job_items.update_one({"item_id": item_id}, {"$set": fields})
