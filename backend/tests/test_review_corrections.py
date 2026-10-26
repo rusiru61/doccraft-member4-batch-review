@@ -80,7 +80,7 @@ def test_blank_value_is_rejected():
 def test_completed_task_cannot_be_edited():
     task = _first_task()
     get_db().review_tasks.update_one(
-        {"task_id": task["task_id"]}, {"$set": {"status": "completed"}}
+        {"task_id": task["task_id"]}, {"$set": {"status": "approved"}}
     )
     assert _fix_supplier(task["task_id"]).status_code == 409
 

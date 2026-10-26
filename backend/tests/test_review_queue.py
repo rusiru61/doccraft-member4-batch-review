@@ -49,7 +49,7 @@ def test_failed_document_creates_no_review_task():
 
 def test_queue_shows_only_pending_tasks():  # US-07 AC2
     _processed_batch(TEN_DOCS)
-    get_db().review_tasks.update_one({"document_id": "DOC-003"}, {"$set": {"status": "completed"}})
+    get_db().review_tasks.update_one({"document_id": "DOC-003"}, {"$set": {"status": "approved"}})
     tasks = client.get("/review-tasks").json()
     assert [t["document_id"] for t in tasks] == ["DOC-006", "DOC-005"]
 
