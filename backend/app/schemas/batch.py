@@ -42,6 +42,7 @@ class JobItemResponse(BaseModel):
     processing_order: int | None = None
     created_at: datetime
     reliability_score: float | None = None
+    review_status: str | None = None
 
 
 class BatchProgress(BaseModel):

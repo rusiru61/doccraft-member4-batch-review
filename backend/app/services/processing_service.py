@@ -50,7 +50,10 @@ def process_batch(batch_id: str, extractor: ExtractionService, ocr_service: OcrS
                 "ocr_confidence": ocr,
                 "reliability_score": score,
             })
-            review_service.flag_if_needed(item, result, score)
+            if review_service.flag_if_needed(item, result, score):
+                repo.update_item(item_id, {"review_status": "pending_review"})
+            else:
+                review_service.auto_finalize(item, result)
         except ExtractionError as exc:  # expected kind of failure
             logger.warning("Batch %s: %s failed: %s", batch_id, item["document_id"], exc)
             _mark_failed(item_id, str(exc))

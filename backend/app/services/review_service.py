@@ -105,3 +105,63 @@ def apply_corrections(
     if not repo.save_corrections(task_id, merged):
         raise TaskNotPendingError(task_id)  # the task was completed in the meantime
     return get_task_detail(task_id)
+
+
+class MissingRequiredFieldsError(Exception):
+    def __init__(self, names: list[str]):
+        super().__init__(f"Required fields still empty: {names}")
+
+
+def build_final_fields(extraction: dict, corrections: dict) -> list[dict]:
+    """The correction wins when there is one; otherwise keep the AI's value."""
+    return [
+        {
+            "name": f["name"],
+            "value": corrections[f["name"]]["value"] if f["name"] in corrections else f["value"],
+            "corrected": f["name"] in corrections,
+        }
+        for f in extraction["fields"]
+    ]
+
+
+def auto_finalize(item: dict, result: ExtractionResult) -> None:
+    """High-scoring documents need no review, so the system finalizes them."""
+    batch_repository.update_item(
+        item["item_id"],
+        {
+            "review_status": "not_required",
+            "final_fields": build_final_fields(result.model_dump(), {}),
+            "finalized_by": "system",
+            "finalized_at": datetime.now(timezone.utc),
+        },
+    )
+
+
+def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
+    task = repo.find_task(task_id)
+    if task is None:
+        raise TaskNotFoundError(task_id)
+    if task["status"] != ReviewStatus.pending.value:
+        raise TaskNotPendingError(task_id)
+
+    item = batch_repository.find_item(task["item_id"])
+    final_fields = build_final_fields(item["extraction"], task.get("corrections", {}))
+    required = {f["name"] for f in item["extraction"]["fields"] if f["required"]}
+    missing = [f["name"] for f in final_fields if f["name"] in required and not f["value"]]
+    if missing:
+        raise MissingRequiredFieldsError(missing)
+
+    now = datetime.now(timezone.utc)
+    if not repo.approve_task(task_id, user.user_id, now):
+        raise TaskNotPendingError(task_id)  # someone else approved it first
+
+    batch_repository.update_item(
+        item["item_id"],
+        {
+            "review_status": "approved",
+            "final_fields": final_fields,
+            "finalized_by": user.user_id,
+            "finalized_at": now,
+        },
+    )
+    return get_task_detail(task_id)

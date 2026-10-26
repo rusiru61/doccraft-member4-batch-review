@@ -27,3 +27,12 @@ def save_corrections(task_id: str, corrections: dict) -> bool:
         {"$set": {"corrections": corrections}},
     )
     return result.matched_count == 1
+
+
+def approve_task(task_id: str, user_id: str, when) -> bool:
+    """Compare-and-set: only a still-pending task can be approved."""
+    result = get_db().review_tasks.update_one(
+        {"task_id": task_id, "status": "pending"},
+        {"$set": {"status": "approved", "approved_by": user_id, "approved_at": when}},
+    )
+    return result.modified_count == 1
