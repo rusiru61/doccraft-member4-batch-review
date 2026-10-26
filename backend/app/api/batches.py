@@ -1,5 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from app.integrations.auth_service import CurrentUser, get_current_user
 from app.integrations.extraction_service import ExtractionService, get_extraction_service
 from app.integrations.document_provider import DocumentProvider, get_document_provider
 from app.schemas.batch import BatchCreate, BatchDetailResponse, BatchResponse
@@ -16,9 +17,10 @@ router = APIRouter(prefix="/batches", tags=["batches"])
 def create_batch(
     payload: BatchCreate,
     provider: DocumentProvider = Depends(get_document_provider),
+    user: CurrentUser = Depends(get_current_user),
 ):
     try:
-        return batch_service.create_batch(payload, provider)
+        return batch_service.create_batch(payload, provider, user)
     except UnknownDocumentError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
