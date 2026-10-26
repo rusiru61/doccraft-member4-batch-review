@@ -45,3 +45,11 @@ def update_item(item_id: str, fields: dict) -> None:
 
 def find_item(item_id: str) -> dict | None:
     return get_db().job_items.find_one({"item_id": item_id}, {"_id": 0})
+
+def list_finalized(batch_id: str | None) -> list[dict]:
+    query: dict = {"review_status": {"$in": ["not_required", "approved"]}}
+    if batch_id:
+        query["batch_id"] = batch_id
+    return list(
+        get_db().job_items.find(query, {"_id": 0}).sort([("finalized_at", 1), ("document_id", 1)])
+    )

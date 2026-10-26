@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class ReviewStatus(str, Enum):
     pending = "pending"
-    completed = "completed"
+    approved = "approved"
 
 
 class ReviewTaskResponse(BaseModel):
@@ -22,6 +22,8 @@ class ReviewTaskResponse(BaseModel):
     flagged_fields: list[str]
     status: ReviewStatus
     created_at: datetime
+    approved_by: str | None = None
+    approved_at: datetime | None = None
 
 class FieldCorrection(BaseModel):
     name: str
