@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
+from app.integrations.auth_service import CurrentUser
 
 from app.integrations.document_provider import DocumentProvider
 from app.repositories import batch_repository as repo
@@ -34,7 +35,7 @@ def _to_batch_response(batch: dict) -> BatchResponse:
     return BatchResponse(**batch, progress=progress)
 
 
-def create_batch(payload: BatchCreate, provider: DocumentProvider) -> BatchResponse:
+def create_batch(payload: BatchCreate, provider: DocumentProvider, user: CurrentUser) -> BatchResponse:
     document_ids = list(dict.fromkeys(payload.document_ids))  # remove duplicates, keep order
     documents = {d: provider.get_document(d) for d in document_ids}
     missing = [d for d, doc in documents.items() if doc is None]
@@ -48,7 +49,10 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider) -> BatchRespo
         "name": payload.name,
         "priority": payload.priority.value,
         "status": BatchStatus.pending.value,
+        "created_by": user.user_id,
         "created_at": now,
+        "started_at": None,
+        "completed_at": None,
     }
     items = [
         {

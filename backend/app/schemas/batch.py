@@ -60,6 +60,9 @@ class BatchResponse(BaseModel):
     priority: Priority
     status: BatchStatus
     created_at: datetime
+    created_by: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     progress: BatchProgress
 
 
