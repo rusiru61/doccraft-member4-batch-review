@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 from app.integrations.auth_service import CurrentUser
+from app.schemas.audit import AuditAction
+from app.services import audit_service
 
 from app.integrations.document_provider import DocumentProvider
 from app.repositories import batch_repository as repo
@@ -71,6 +73,14 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider, user: Current
         for doc in documents.values()
     ]
     repo.insert_batch(batch, items)
+    audit_service.record(
+        user.user_id,
+        AuditAction.batch_created,
+        "batch",
+        batch_id,
+        batch_id,
+        {"name": payload.name, "priority": payload.priority.value, "document_count": len(items)},
+    )
     return _to_batch_response(batch)
 
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import batches, health, review, results, history
+from app.api import batches, health, review, results, history, audit
 from app.core.config import settings
 
 import logging
@@ -13,3 +13,4 @@ app.include_router(batches.router)
 app.include_router(review.router)
 app.include_router(results.router)
 app.include_router(history.router)
+app.include_router(audit.router)

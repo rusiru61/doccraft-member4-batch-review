@@ -7,6 +7,8 @@ from app.schemas.review import ReviewStatus, ReviewTaskResponse
 from app.integrations.auth_service import CurrentUser
 from app.repositories import batch_repository
 from app.schemas.review import CorrectionRequest, ReviewFieldView, ReviewTaskDetail
+from app.schemas.audit import AuditAction
+from app.services import audit_service
 
 def needs_review(score: float) -> bool:
     """A score exactly equal to the threshold passes (US-06 AC2)."""
@@ -97,6 +99,16 @@ def apply_corrections(
     if unknown:
         raise UnknownFieldError(unknown)
 
+    original = {f["name"]: f["value"] for f in item["extraction"]["fields"]}
+    previous = task.get("corrections", {})
+    changes = {
+        c.name: {
+            "from": previous[c.name]["value"] if c.name in previous else original[c.name],
+            "to": c.value,
+        }
+        for c in request.corrections
+    }
+
     now = datetime.now(timezone.utc)
     merged = dict(task.get("corrections", {}))
     for c in request.corrections:
@@ -104,6 +116,15 @@ def apply_corrections(
 
     if not repo.save_corrections(task_id, merged):
         raise TaskNotPendingError(task_id)  # the task was completed in the meantime
+    
+    audit_service.record(
+        user.user_id,
+        AuditAction.fields_corrected,
+        "review_task",
+        task_id,
+        task["batch_id"],
+        {"document_id": task["document_id"], "changes": changes},
+    )
     return get_task_detail(task_id)
 
 
@@ -162,6 +183,18 @@ def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
             "final_fields": final_fields,
             "finalized_by": user.user_id,
             "finalized_at": now,
+        },
+    )
+    
+    audit_service.record(
+        user.user_id,
+        AuditAction.task_approved,
+        "review_task",
+        task_id,
+        task["batch_id"],
+        {
+            "document_id": task["document_id"],
+            "corrected_fields": [f["name"] for f in final_fields if f["corrected"]],
         },
     )
     return get_task_detail(task_id)

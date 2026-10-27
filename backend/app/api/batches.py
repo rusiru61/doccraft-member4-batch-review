@@ -43,9 +43,10 @@ def process_batch(
     background_tasks: BackgroundTasks,
     extractor: ExtractionService = Depends(get_extraction_service),
     ocr_service: OcrService = Depends(get_ocr_service),
+    user: CurrentUser = Depends(get_current_user),
 ):
     try:
-        processing_service.start_processing(batch_id)
+        processing_service.start_processing(batch_id, user)
     except BatchNotFoundError:
         raise HTTPException(status_code=404, detail="Batch not found")
     except BatchNotPendingError:
