@@ -5,6 +5,9 @@ from app.repositories import batch_repository as repo
 from app.integrations.ocr_service import OcrService
 from app.services import review_service
 from app.services.reliability_service import calculate_reliability_score
+from app.integrations.auth_service import CurrentUser
+from app.schemas.audit import AuditAction
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +25,14 @@ def order_items(items: list[dict]) -> list[dict]:
     return sorted(items, key=lambda i: (i["page_count"], i["text_length"], i["document_id"]))
 
 
-def start_processing(batch_id: str) -> None:
+def start_processing(batch_id: str, user: CurrentUser) -> None:
     if repo.find_batch(batch_id) is None:
         raise BatchNotFoundError(batch_id)
     if not repo.try_mark_batch_processing(batch_id):
         raise BatchNotPendingError(batch_id)
+    audit_service.record(
+        user.user_id, AuditAction.processing_started, "batch", batch_id, batch_id
+    )
 
 
 def _mark_failed(item_id: str, message: str) -> None:
