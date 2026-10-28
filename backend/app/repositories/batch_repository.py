@@ -66,6 +66,8 @@ def summarize_items(batch_ids: list[str]) -> dict[str, dict]:
                 "total": {"$sum": 1},
                 "completed": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
                 "failed": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}},
+                "pending": {"$sum": {"$cond": [{"$eq": ["$status", "pending"]}, 1, 0]}},
+                "processing": {"$sum": {"$cond": [{"$eq": ["$status", "processing"]}, 1, 0]}},
                 "pending_review": {
                     "$sum": {"$cond": [{"$eq": ["$review_status", "pending_review"]}, 1, 0]}
                 },

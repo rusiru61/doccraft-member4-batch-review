@@ -85,8 +85,14 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider, user: Current
 
 
 def list_batches() -> list[BatchResponse]:
-    return [_to_batch_response(b) for b in repo.list_batches()]
-
+    batches = repo.list_batches()
+    stats = repo.summarize_items([b["batch_id"] for b in batches]) if batches else {}
+    responses = []
+    for batch in batches:
+        s = stats.get(batch["batch_id"], {})
+        counts = {k: s.get(k, 0) for k in ("pending", "processing", "completed", "failed")}
+        responses.append(BatchResponse(**batch, progress=build_progress(counts)))
+    return responses
 
 def get_batch_detail(batch_id: str) -> BatchDetailResponse | None:
     batch = repo.find_batch(batch_id)
