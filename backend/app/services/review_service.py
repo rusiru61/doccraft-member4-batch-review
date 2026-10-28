@@ -20,9 +20,17 @@ def find_flagged_fields(result: ExtractionResult) -> list[str]:
     return [f.name for f in result.fields if not f.found or f.confidence < threshold]
 
 
-def flag_if_needed(item: dict, result: ExtractionResult, score: float) -> bool:
-    if not needs_review(score):
+def flag_if_needed(
+    item: dict, result: ExtractionResult, score: float, force_review: bool = False
+) -> bool:
+    reasons = []
+    if needs_review(score):
+        reasons.append("low_reliability")
+    if force_review:
+        reasons.append("unknown_language")
+    if not reasons:
         return False
+
     repo.upsert_task(
         {
             "task_id": f"REV-{item['item_id']}",
@@ -32,6 +40,7 @@ def flag_if_needed(item: dict, result: ExtractionResult, score: float) -> bool:
             "filename": item["filename"],
             "reliability_score": score,
             "flagged_fields": find_flagged_fields(result),
+            "review_reasons": reasons,
             "status": ReviewStatus.pending.value,
             "created_at": datetime.now(timezone.utc),
         }
