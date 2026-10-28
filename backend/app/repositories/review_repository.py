@@ -1,11 +1,15 @@
 from app.core.database import get_db
+from pymongo.errors import DuplicateKeyError
 
 
 def upsert_task(task: dict) -> None:
     """Insert only if no task with this task_id exists (safe to call twice)."""
-    get_db().review_tasks.update_one(
-        {"task_id": task["task_id"]}, {"$setOnInsert": task}, upsert=True
-    )
+    try:
+        get_db().review_tasks.update_one(
+            {"task_id": task["task_id"]}, {"$setOnInsert": task}, upsert=True
+        )
+    except DuplicateKeyError:
+        pass  # another request created the same task first, which is the outcome we want
 
 
 def list_tasks(status: str | None) -> list[dict]:
