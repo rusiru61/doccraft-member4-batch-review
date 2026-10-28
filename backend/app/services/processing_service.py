@@ -8,6 +8,7 @@ from app.services.reliability_service import calculate_reliability_score
 from app.integrations.auth_service import CurrentUser
 from app.schemas.audit import AuditAction
 from app.services import audit_service
+from app.services import routing_service
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,15 @@ def process_batch(batch_id: str, extractor: ExtractionService, ocr_service: OcrS
 
     for position, item in enumerate(items, start=1):
         item_id = item["item_id"]
-        repo.update_item(item_id, {"status": "processing", "processing_order": position})
+        routing = routing_service.route_language(item["detected_language"])
+        repo.update_item(
+            item_id,
+            {
+                "status": "processing",
+                "processing_order": position,
+                "language_routing": routing.model_dump(),
+            },
+        )
         try:
             result = extractor.extract(item["document_id"])
             ocr = ocr_service.get_ocr_confidence(item["document_id"], item.get("is_scanned", False))
@@ -56,7 +65,7 @@ def process_batch(batch_id: str, extractor: ExtractionService, ocr_service: OcrS
                 "ocr_confidence": ocr,
                 "reliability_score": score,
             })
-            if review_service.flag_if_needed(item, result, score):
+            if review_service.flag_if_needed(item, result, score, force_review=routing.requires_review):
                 repo.update_item(item_id, {"review_status": "pending_review"})
             else:
                 review_service.auto_finalize(item, result)

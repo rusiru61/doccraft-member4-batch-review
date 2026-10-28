@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from app.schemas.routing import LanguageRouting
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +44,7 @@ class JobItemResponse(BaseModel):
     created_at: datetime
     reliability_score: float | None = None
     review_status: str | None = None
+    language_routing: LanguageRouting | None = None
 
 
 class BatchProgress(BaseModel):

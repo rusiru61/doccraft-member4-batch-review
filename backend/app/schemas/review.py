@@ -24,6 +24,7 @@ class ReviewTaskResponse(BaseModel):
     created_at: datetime
     approved_by: str | None = None
     approved_at: datetime | None = None
+    review_reasons: list[str] = []
 
 class FieldCorrection(BaseModel):
     name: str
