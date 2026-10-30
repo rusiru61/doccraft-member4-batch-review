@@ -9,6 +9,7 @@ from app.integrations.auth_service import CurrentUser
 from app.schemas.audit import AuditAction
 from app.services import audit_service
 from app.services import routing_service
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +22,26 @@ class BatchNotPendingError(Exception):
     pass
 
 
+class QueueUnavailableError(Exception):
+    pass
+
+
 def order_items(items: list[dict]) -> list[dict]:
     """Shortest first: fewer pages, then shorter text, then ID for a stable order."""
     return sorted(items, key=lambda i: (i["page_count"], i["text_length"], i["document_id"]))
 
 
-def start_processing(batch_id: str, user: CurrentUser) -> None:
+def start_processing(batch_id: str, user: CurrentUser, enqueue: Callable[[str], None]) -> None:
     if repo.find_batch(batch_id) is None:
         raise BatchNotFoundError(batch_id)
     if not repo.try_mark_batch_processing(batch_id):
         raise BatchNotPendingError(batch_id)
+    try:
+        enqueue(batch_id)
+    except QueueUnavailableError:
+        repo.revert_batch_to_pending(batch_id)  # nothing was queued, so undo the mark
+        raise
+    # The audit entry is written only after the job is really queued.
     audit_service.record(
         user.user_id, AuditAction.processing_started, "batch", batch_id, batch_id
     )
@@ -42,9 +53,12 @@ def _mark_failed(item_id: str, message: str) -> None:
 
 def process_batch(batch_id: str, extractor: ExtractionService, ocr_service: OcrService) -> None:
     items = order_items(repo.list_items(batch_id))
-    logger.info("Batch %s: processing %d items", batch_id, len(items))
+    remaining = sum(1 for i in items if i["status"] in ("pending", "processing"))
+    logger.info("Batch %s: processing %d of %d items", batch_id, remaining, len(items))
 
     for position, item in enumerate(items, start=1):
+        if item["status"] in ("completed", "failed"):
+            continue  # finished before a restart or redelivery, so never redo it
         item_id = item["item_id"]
         routing = routing_service.route_language(item["detected_language"])
         repo.update_item(

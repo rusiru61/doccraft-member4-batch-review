@@ -2,6 +2,11 @@ import pytest
 
 from app.core.config import settings
 from app.core.database import ensure_indexes, get_client
+from app.core.celery_app import celery_app
+
+# Tests run Celery tasks in-process, so pytest needs no Redis and no worker.
+celery_app.conf.task_always_eager = True
+celery_app.conf.task_eager_propagates = True
 
 TEST_DB = "doccraft_member4_test"
 
