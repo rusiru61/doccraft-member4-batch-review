@@ -90,3 +90,10 @@ def list_finalized(batch_id: str | None) -> list[dict]:
     return list(
         get_db().job_items.find(query, {"_id": 0}).sort([("finalized_at", 1), ("document_id", 1)])
     )
+
+def revert_batch_to_pending(batch_id: str) -> None:
+    """Undo the 'processing' mark when the job could not be queued."""
+    get_db().batches.update_one(
+        {"batch_id": batch_id, "status": "processing"},
+        {"$set": {"status": "pending", "started_at": None}},
+    )

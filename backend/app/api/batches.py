@@ -1,14 +1,16 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.integrations.auth_service import CurrentUser, get_current_user
-from app.integrations.extraction_service import ExtractionService, get_extraction_service
 from app.integrations.document_provider import DocumentProvider, get_document_provider
 from app.schemas.batch import BatchCreate, BatchDetailResponse, BatchResponse
 from app.services import batch_service
 from app.services import processing_service
 from app.services.batch_service import UnknownDocumentError
 from app.services.processing_service import BatchNotFoundError, BatchNotPendingError
-from app.integrations.ocr_service import OcrService, get_ocr_service
+from app.tasks.processing_tasks import enqueue_batch_processing
+from app.services.processing_service import (
+    BatchNotFoundError, BatchNotPendingError, QueueUnavailableError,
+)
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
@@ -38,18 +40,13 @@ def get_batch(batch_id: str):
     return batch
 
 @router.post("/{batch_id}/process", status_code=202)
-def process_batch(
-    batch_id: str,
-    background_tasks: BackgroundTasks,
-    extractor: ExtractionService = Depends(get_extraction_service),
-    ocr_service: OcrService = Depends(get_ocr_service),
-    user: CurrentUser = Depends(get_current_user),
-):
+def process_batch(batch_id: str, user: CurrentUser = Depends(get_current_user)):
     try:
-        processing_service.start_processing(batch_id, user)
+        processing_service.start_processing(batch_id, user, enqueue_batch_processing)
     except BatchNotFoundError:
         raise HTTPException(status_code=404, detail="Batch not found")
     except BatchNotPendingError:
         raise HTTPException(status_code=409, detail="Batch has already been started")
-    background_tasks.add_task(processing_service.process_batch, batch_id, extractor, ocr_service)
+    except QueueUnavailableError:
+        raise HTTPException(status_code=503, detail="Job queue unavailable, please try again")
     return {"batch_id": batch_id, "status": "processing"}
