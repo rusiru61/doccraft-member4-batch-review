@@ -28,7 +28,7 @@ def test_task_is_registered_with_safe_settings():
 def test_queue_outage_returns_503_and_leaves_batch_pending(monkeypatch):
     batch_id = _create(["DOC-001"])
 
-    def broken_queue(failed_batch_id):
+    def broken_queue(failed_batch_id, priority):
         raise QueueUnavailableError(failed_batch_id)
 
     with monkeypatch.context() as patch:
