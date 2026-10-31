@@ -1,6 +1,16 @@
 from celery import Celery
+from kombu import Queue
 
 from app.core.config import settings
+
+# Names sort alphabetically in priority order, which the Redis "sorted" strategy relies on.
+_QUEUE_BY_PRIORITY = {"high": "p1_high", "medium": "p2_medium", "low": "p3_low"}
+PRIORITY_QUEUES = tuple(_QUEUE_BY_PRIORITY.values())
+
+
+def queue_for_priority(priority: str) -> str:
+    return _QUEUE_BY_PRIORITY.get(priority, "p2_medium")
+
 
 celery_app = Celery(
     "doccraft_member4",
@@ -22,4 +32,7 @@ celery_app.conf.update(
         "interval_max": 0.5,
     },
     timezone="UTC",
+    task_queues=tuple(Queue(name) for name in PRIORITY_QUEUES),
+    task_default_queue="p2_medium",
+    broker_transport_options={"queue_order_strategy": "sorted"},
 )
