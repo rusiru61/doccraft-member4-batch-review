@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     reliability_threshold: float = 0.80
     mock_processing_delay_seconds: float = 0.5
     redis_url: str = "redis://127.0.0.1:6379/0"
+    log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=".env")
 
