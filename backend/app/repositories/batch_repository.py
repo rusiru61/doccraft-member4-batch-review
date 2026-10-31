@@ -32,9 +32,17 @@ def try_mark_batch_processing(batch_id: str) -> bool:
     """Compare-and-set: succeeds only if the batch is still 'pending'."""
     result = get_db().batches.update_one(
         {"batch_id": batch_id, "status": "pending"},
-        {"$set": {"status": "processing", "started_at": datetime.now(timezone.utc)}},
+        {"$set": {"status": "processing"}},
     )
     return result.modified_count == 1
+
+
+def mark_batch_started(batch_id: str) -> None:
+    """Called by the worker. Keeps the first start time if the batch is resumed."""
+    get_db().batches.update_one(
+        {"batch_id": batch_id, "started_at": None},
+        {"$set": {"started_at": datetime.now(timezone.utc)}},
+    )
 
 
 def set_batch_status(batch_id: str, status: str) -> None:

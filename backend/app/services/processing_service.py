@@ -31,13 +31,16 @@ def order_items(items: list[dict]) -> list[dict]:
     return sorted(items, key=lambda i: (i["page_count"], i["text_length"], i["document_id"]))
 
 
-def start_processing(batch_id: str, user: CurrentUser, enqueue: Callable[[str], None]) -> None:
-    if repo.find_batch(batch_id) is None:
+def start_processing(
+    batch_id: str, user: CurrentUser, enqueue: Callable[[str, str], None]
+) -> None:
+    batch = repo.find_batch(batch_id)
+    if batch is None:
         raise BatchNotFoundError(batch_id)
     if not repo.try_mark_batch_processing(batch_id):
         raise BatchNotPendingError(batch_id)
     try:
-        enqueue(batch_id)
+        enqueue(batch_id, batch["priority"])
     except QueueUnavailableError:
         repo.revert_batch_to_pending(batch_id)  # nothing was queued, so undo the mark
         raise
@@ -52,6 +55,7 @@ def _mark_failed(item_id: str, message: str) -> None:
 
 
 def process_batch(batch_id: str, extractor: ExtractionService, ocr_service: OcrService) -> None:
+    repo.mark_batch_started(batch_id)
     items = order_items(repo.list_items(batch_id))
     remaining = sum(1 for i in items if i["status"] in ("pending", "processing"))
     logger.info("Batch %s: processing %d of %d items", batch_id, remaining, len(items))
