@@ -2,7 +2,7 @@ import logging
 
 from kombu.exceptions import OperationalError
 
-from app.core.celery_app import celery_app
+from app.core.celery_app import celery_app, queue_for_priority
 from app.integrations.extraction_service import get_extraction_service
 from app.integrations.ocr_service import get_ocr_service
 from app.services import processing_service
@@ -17,10 +17,10 @@ def run_batch_processing(batch_id: str) -> None:
     processing_service.process_batch(batch_id, get_extraction_service(), get_ocr_service())
 
 
-def enqueue_batch_processing(batch_id: str) -> None:
-    """Called by the API. Turns a broker failure into our own error type."""
+def enqueue_batch_processing(batch_id: str, priority: str) -> None:
+    """Called by the API. Sends the job to the queue that matches its priority."""
     try:
-        run_batch_processing.delay(batch_id)
+        run_batch_processing.apply_async(args=[batch_id], queue=queue_for_priority(priority))
     except OperationalError as exc:
         logger.error("Job queue unavailable while enqueuing batch %s", batch_id)
         raise QueueUnavailableError(batch_id) from exc
