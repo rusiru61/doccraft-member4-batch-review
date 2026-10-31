@@ -1,15 +1,17 @@
-from fastapi import FastAPI
-
-from app.api import batches, health, review, results, history, audit
-from app.core.config import settings
-
 import logging
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
+from app.api import audit, batches, health, history, results, review
+from app.core.config import settings
 from app.core.database import ensure_indexes
+from app.core.logging_config import request_id_var, setup_logging
+from app.core.middleware import request_context_middleware
 
+setup_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
 
@@ -23,9 +25,20 @@ async def lifespan(app: FastAPI):
     yield
 
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.middleware("http")(request_context_middleware)
+
+
+@app.exception_handler(PyMongoError)
+async def database_error_handler(request: Request, exc: PyMongoError):
+    """A database outage is an expected failure, so answer 503 rather than a generic 500."""
+    logger.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database unavailable", "request_id": request_id_var.get()},
+    )
+
+
 app.include_router(health.router)
 app.include_router(batches.router)
 app.include_router(review.router)
