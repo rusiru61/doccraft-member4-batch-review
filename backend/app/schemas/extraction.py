@@ -1,20 +1,21 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# What the extraction engine may return. "corrected" is set only by a human reviewer.
+EngineFieldStatus = Literal["extracted", "missing", "invalid"]
 
-class ExtractedField(BaseModel):
-    name: str
+
+class FieldResult(BaseModel):
     value: str | None
-    confidence: float = Field(ge=0, le=1)
-    found: bool
-    required: bool
+    status: EngineFieldStatus
+    source_text: str | None = None
 
 
 class ExtractionResult(BaseModel):
     document_id: str
-    fields: list[ExtractedField]
-    ai_confidence: float = Field(ge=0, le=1)
-    validation_passed: bool
+    field_values: dict[str, FieldResult]
+    ai_confidence: float | None = Field(default=None, ge=0, le=1)  # optional, not calibrated
     validation_errors: list[str] = []
     extracted_at: datetime

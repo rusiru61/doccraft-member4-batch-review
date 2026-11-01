@@ -3,28 +3,28 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from app.core.config import settings
-from app.schemas.extraction import ExtractedField, ExtractionResult
+from app.schemas.extraction import ExtractionResult, FieldResult
 
 
 class ExtractionError(Exception):
-    """Raised when a document cannot be extracted. Maps to status 'failed' in contract G3."""
+    """Raised when a document cannot be extracted. Maps to status 'failed' in the job."""
 
 
 class ExtractionService(Protocol):
     def extract(self, document_id: str) -> ExtractionResult: ...
 
 
-# document_id -> (ai_confidence, validation_passed)
+# document_id -> (ai_confidence, what happens to the supplier_name field)
 _OUTCOMES = {
-    "DOC-001": (0.95, True),
-    "DOC-002": (0.88, True),
-    "DOC-003": (0.55, False),  # blurry receipt
-    "DOC-004": (0.91, True),
-    "DOC-005": (0.72, True),   # Sinhala scan
-    "DOC-006": (0.64, False),  # Tamil scan
-    "DOC-007": (0.93, True),
-    "DOC-009": (0.85, True),
-    "DOC-010": (0.78, True),
+    "DOC-001": (0.95, "ok"),
+    "DOC-002": (0.88, "ok"),
+    "DOC-003": (0.55, "missing"),   # blurry receipt
+    "DOC-004": (0.91, "ok"),
+    "DOC-005": (0.72, "ok"),        # Sinhala scan
+    "DOC-006": (0.64, "invalid"),   # Tamil scan
+    "DOC-007": (0.93, "ok"),
+    "DOC-009": (0.85, "ok"),
+    "DOC-010": (0.78, "ok"),
 }
 _FAILING_IDS = {"DOC-008"}
 
@@ -37,27 +37,34 @@ class MockExtractionService:
         if document_id in _FAILING_IDS:
             raise ExtractionError("Mock failure: text could not be read from document")
 
-        ai_confidence, valid = _OUTCOMES.get(document_id, (0.80, True))
-        fields = [
-            ExtractedField(name="invoice_no", value=f"INV-{document_id[-3:]}",
-                           confidence=ai_confidence, found=True, required=True),
-            ExtractedField(name="total_amount", value="1500.00",
-                           confidence=ai_confidence, found=True, required=True),
-        ]
+        ai_confidence, supplier = _OUTCOMES.get(document_id, (0.80, "ok"))
+        number = f"INV-{document_id[-3:]}"
+        field_values = {
+            "invoice_number": FieldResult(
+                value=number, status="extracted", source_text=f"Invoice No: {number}"
+            ),
+            "total_amount": FieldResult(
+                value="1500.00", status="extracted", source_text="Total: 1,500.00"
+            ),
+        }
         errors: list[str] = []
-        if valid:
-            fields.append(ExtractedField(name="supplier_name", value="ABC Traders",
-                                         confidence=ai_confidence, found=True, required=True))
-        else:
-            fields.append(ExtractedField(name="supplier_name", value=None,
-                                         confidence=0.0, found=False, required=True))
+        if supplier == "ok":
+            field_values["supplier_name"] = FieldResult(
+                value="ABC Traders", status="extracted", source_text="Supplier: ABC Traders"
+            )
+        elif supplier == "missing":
+            field_values["supplier_name"] = FieldResult(value=None, status="missing")
             errors.append("Missing supplier name")
+        else:
+            field_values["supplier_name"] = FieldResult(
+                value="???", status="invalid", source_text="Supplier: ???"
+            )
+            errors.append("Supplier name failed validation")
 
         return ExtractionResult(
             document_id=document_id,
-            fields=fields,
+            field_values=field_values,
             ai_confidence=ai_confidence,
-            validation_passed=valid,
             validation_errors=errors,
             extracted_at=datetime.now(timezone.utc),
         )
