@@ -12,8 +12,8 @@ def list_audit_log(
     action: AuditAction | None = None,
     batch_id: str | None = None,
     entity_id: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
 ):
     """Read-only record of who did what, newest first."""
-    return audit_service.get_log(user_id, action, batch_id, entity_id, limit, offset)
+    return audit_service.get_log(user_id, action, batch_id, entity_id, page, page_size)

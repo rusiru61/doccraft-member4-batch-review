@@ -24,6 +24,6 @@ class AuditEntry(BaseModel):
 
 class AuditLogPage(BaseModel):
     total: int
-    limit: int
-    offset: int
+    page: int
+    page_size: int
     items: list[AuditEntry]

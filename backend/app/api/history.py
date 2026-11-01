@@ -10,8 +10,8 @@ router = APIRouter(prefix="/job-history", tags=["history"])
 @router.get("", response_model=JobHistoryPage)
 def list_job_history(
     status: BatchStatus | None = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
 ):
     """Past and current batch jobs, newest first."""
-    return history_service.get_history(status, limit, offset)
+    return history_service.get_history(status, page, page_size)
