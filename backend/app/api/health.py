@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pymongo.errors import PyMongoError
 
 from app.core.database import get_client
+from app.core.errors import ApiError
 
 router = APIRouter(tags=["health"])
 
@@ -17,4 +18,4 @@ def health_db():
         get_client().admin.command("ping")
         return {"database": "connected"}
     except PyMongoError:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+        raise ApiError(503, "DATABASE_UNAVAILABLE", "Database unavailable")

@@ -1,18 +1,20 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, FastAPI
 from pymongo.errors import PyMongoError
 
 from app.api import audit, batches, health, history, results, review
 from app.core.config import settings
 from app.core.database import ensure_indexes
-from app.core.logging_config import request_id_var, setup_logging
+from app.core.errors import register_error_handlers
+from app.core.logging_config import setup_logging
 from app.core.middleware import request_context_middleware
 
 setup_logging(settings.log_level)
 logger = logging.getLogger(__name__)
+
+API_PREFIX = "/api/v1"
 
 
 @asynccontextmanager
@@ -27,21 +29,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.middleware("http")(request_context_middleware)
+register_error_handlers(app)
 
-
-@app.exception_handler(PyMongoError)
-async def database_error_handler(request: Request, exc: PyMongoError):
-    """A database outage is an expected failure, so answer 503 rather than a generic 500."""
-    logger.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
-    return JSONResponse(
-        status_code=503,
-        content={"detail": "Database unavailable", "request_id": request_id_var.get()},
-    )
-
-
+# Health checks stay at the root, as the team contract specifies.
 app.include_router(health.router)
-app.include_router(batches.router)
-app.include_router(review.router)
-app.include_router(results.router)
-app.include_router(history.router)
-app.include_router(audit.router)
+
+# Everything else lives under the versioned prefix.
+api_v1 = APIRouter(prefix=API_PREFIX)
+api_v1.include_router(batches.router)
+api_v1.include_router(review.router)
+api_v1.include_router(results.router)
+api_v1.include_router(history.router)
+api_v1.include_router(audit.router)
+app.include_router(api_v1)
