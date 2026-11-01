@@ -1,6 +1,7 @@
 import logging
 
 from kombu.exceptions import OperationalError
+from app.integrations.data_structure_provider import get_data_structure_provider
 
 from app.core.celery_app import celery_app, queue_for_priority
 from app.integrations.extraction_service import get_extraction_service
@@ -14,7 +15,9 @@ logger = logging.getLogger(__name__)
 @celery_app.task(name="batches.process")
 def run_batch_processing(batch_id: str) -> None:
     """Runs in the worker. Receives only an ID and builds its own services."""
-    processing_service.process_batch(batch_id, get_extraction_service(), get_ocr_service())
+    processing_service.process_batch(
+        batch_id, get_extraction_service(), get_ocr_service(), get_data_structure_provider()
+    )
 
 
 def enqueue_batch_processing(batch_id: str, priority: str) -> None:

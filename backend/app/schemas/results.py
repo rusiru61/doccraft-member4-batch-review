@@ -5,10 +5,10 @@ from pydantic import BaseModel
 
 
 class FinalField(BaseModel):
+    field_id: str
     name: str
     value: str | None
-    corrected: bool
-
+    status: str  # extracted, missing, invalid, or corrected
 
 class FinalizedResult(BaseModel):
     item_id: str

@@ -27,23 +27,23 @@ class ReviewTaskResponse(BaseModel):
     review_reasons: list[str] = []
 
 class FieldCorrection(BaseModel):
-    name: str
+    field_id: str
     value: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
-
 
 class CorrectionRequest(BaseModel):
     corrections: list[FieldCorrection] = Field(min_length=1)
 
 
 class ReviewFieldView(BaseModel):
+    field_id: str
     name: str
+    type: str
+    required: bool
     original_value: str | None
     current_value: str | None
-    confidence: float
-    found: bool
-    required: bool
+    status: str  # extracted, missing, invalid, or corrected
+    source_text: str | None
     flagged: bool
-    corrected: bool
 
 
 class ReviewTaskDetail(ReviewTaskResponse):

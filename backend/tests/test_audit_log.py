@@ -17,7 +17,7 @@ def _log(**params):
 
 
 def _fix_supplier(task_id, value="ABC Traders"):
-    body = {"corrections": [{"name": "supplier_name", "value": value}]}
+    body = {"corrections": [{"field_id": "supplier_name", "value": value}]}
     return client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=body)
 
 
@@ -82,7 +82,7 @@ def test_rejected_requests_write_no_audit_entry():
     task_id = _task_id()
     before = _log()["total"]  # create + process = 2
 
-    bad_field = {"corrections": [{"name": "banana", "value": "x"}]}
+    bad_field = {"corrections": [{"field_id": "banana", "value": "x"}]}
     assert client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=bad_field).status_code == 422
     assert client.post(f"/api/v1/review-tasks/{task_id}/finalize").status_code == 422  # supplier empty
     assert _fix_supplier("REV-NOPE").status_code == 404

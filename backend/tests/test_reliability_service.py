@@ -41,3 +41,12 @@ def test_weights_that_do_not_sum_to_one_are_rejected():
 
 def test_default_weights_match_the_agreed_values():
     assert default_weights() == W
+
+
+def test_missing_ai_confidence_rescales_remaining_weights():
+    # (0.8 * 0.3 + 1.0 * 0.2) / 0.5
+    assert calculate_reliability_score(0.8, None, True, W) == pytest.approx(0.88)
+
+
+def test_only_validation_available():
+    assert calculate_reliability_score(None, None, False, W) == 0.0
