@@ -2,7 +2,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.review_service import build_final_fields
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
@@ -16,11 +15,12 @@ def _process(ids):
 
 
 def _task_for(doc_id):
-    return next(t for t in client.get("/api/v1/review-tasks").json() if t["document_id"] == doc_id)
+    tasks = client.get("/api/v1/review-tasks").json()
+    return next(t for t in tasks if t["document_id"] == doc_id)
 
 
 def _fix_supplier(task_id, value="ABC Traders"):
-    body = {"corrections": [{"name": "supplier_name", "value": value}]}
+    body = {"corrections": [{"field_id": "supplier_name", "value": value}]}
     return client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=body)
 
 
@@ -33,19 +33,11 @@ def _results(batch_id=None):
     return client.get("/api/v1/finalized-results", params=params).json()
 
 
-def test_build_final_fields_prefers_corrections():
-    extraction = {"fields": [{"name": "a", "value": None}, {"name": "b", "value": "x"}]}
-    corrections = {"a": {"value": "fixed"}}
-    assert build_final_fields(extraction, corrections) == [
-        {"name": "a", "value": "fixed", "corrected": True},
-        {"name": "b", "value": "x", "corrected": False},
-    ]
-
-
-def test_cannot_finalize_with_empty_required_field():
+def test_cannot_finalize_with_unresolved_required_field():
     _process(["DOC-003"])
     response = _finalize(_task_for("DOC-003")["task_id"])
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REQUIRED_FIELDS_MISSING"
     assert "supplier_name" in response.json()["error"]["message"]
 
 
@@ -59,7 +51,7 @@ def test_finalize_sets_status_approved():  # US-09 AC1
     assert response.json()["approved_by"] == "user_001"
 
 
-def test_task_without_missing_fields_can_be_approved_as_is():
+def test_task_without_problem_fields_can_be_approved_as_is():
     _process(["DOC-005"])
     assert _finalize(_task_for("DOC-005")["task_id"]).status_code == 200
 
@@ -84,9 +76,9 @@ def test_approved_document_appears_in_finalized_results():  # US-09 AC2
     assert result["document_id"] == "DOC-003"
     assert result["review_status"] == "approved"
     assert result["finalized_by"] == "user_001"
-    supplier = next(f for f in result["fields"] if f["name"] == "supplier_name")
+    supplier = next(f for f in result["fields"] if f["field_id"] == "supplier_name")
     assert supplier["value"] == "ABC Traders"
-    assert supplier["corrected"] is True
+    assert supplier["status"] == "corrected"
 
 
 def test_results_contain_auto_passed_but_not_unreviewed_documents():
@@ -95,9 +87,11 @@ def test_results_contain_auto_passed_but_not_unreviewed_documents():
     assert [r["document_id"] for r in results] == ["DOC-001"]
     assert results[0]["review_status"] == "not_required"
     assert results[0]["finalized_by"] == "system"
+    assert [f["status"] for f in results[0]["fields"]] == ["extracted"] * 3
 
-    items = {i["document_id"]: i for i in client.get(f"/api/v1/batches/{batch_id}").json()["items"]}
-    assert items["DOC-003"]["review_status"] == "pending_review"
+    items = client.get(f"/api/v1/batches/{batch_id}").json()["items"]
+    by_doc = {i["document_id"]: i for i in items}
+    assert by_doc["DOC-003"]["review_status"] == "pending_review"
 
 
 def test_failed_document_is_never_in_results():

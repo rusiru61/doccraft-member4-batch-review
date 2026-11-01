@@ -16,20 +16,25 @@ def _first_task():
 
 
 def _fix_supplier(task_id, value="ABC Traders"):
-    body = {"corrections": [{"name": "supplier_name", "value": value}]}
+    body = {"corrections": [{"field_id": "supplier_name", "value": value}]}
     return client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=body)
 
 
-def _field(detail, name):
-    return next(f for f in detail["fields"] if f["name"] == name)
+def _field(detail, field_id):
+    return next(f for f in detail["fields"] if f["field_id"] == field_id)
 
 
-def test_detail_shows_flagged_missing_field():
+def test_detail_shows_fields_in_order_with_the_flagged_one_marked():
     task = _first_task()
     detail = client.get(f"/api/v1/review-tasks/{task['task_id']}").json()
+    assert [f["field_id"] for f in detail["fields"]] == [
+        "invoice_number", "total_amount", "supplier_name",
+    ]
     supplier = _field(detail, "supplier_name")
-    assert supplier["flagged"] and not supplier["found"]
+    assert supplier["name"] == "Supplier Name"
+    assert supplier["flagged"] and supplier["status"] == "missing"
     assert supplier["current_value"] is None
+    assert not _field(detail, "invoice_number")["flagged"]
     assert detail["validation_errors"] == ["Missing supplier name"]
 
 
@@ -40,7 +45,7 @@ def test_correction_is_saved():  # US-08 AC1
     supplier = _field(response.json(), "supplier_name")
     assert supplier["current_value"] == "ABC Traders"
     assert supplier["original_value"] is None
-    assert supplier["corrected"] is True
+    assert supplier["status"] == "corrected"
 
 
 def test_reopened_task_shows_corrected_values():  # US-08 AC2
@@ -54,8 +59,8 @@ def test_original_extraction_is_never_overwritten():
     task = _first_task()
     _fix_supplier(task["task_id"])
     item = get_db().job_items.find_one({"item_id": task["item_id"]})
-    original = next(f for f in item["extraction"]["fields"] if f["name"] == "supplier_name")
-    assert original["value"] is None
+    original = item["extraction"]["field_values"]["supplier_name"]
+    assert original["value"] is None and original["status"] == "missing"
 
 
 def test_correction_records_who_and_when():
@@ -68,8 +73,10 @@ def test_correction_records_who_and_when():
 
 def test_unknown_field_is_rejected():
     task = _first_task()
-    body = {"corrections": [{"name": "not_a_field", "value": "x"}]}
-    assert client.patch(f"/api/v1/review-tasks/{task['task_id']}/fields", json=body).status_code == 422
+    body = {"corrections": [{"field_id": "not_a_field", "value": "x"}]}
+    response = client.patch(f"/api/v1/review-tasks/{task['task_id']}/fields", json=body)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "UNKNOWN_FIELD"
 
 
 def test_blank_value_is_rejected():
@@ -77,7 +84,7 @@ def test_blank_value_is_rejected():
     assert _fix_supplier(task["task_id"], value="   ").status_code == 422
 
 
-def test_completed_task_cannot_be_edited():
+def test_approved_task_cannot_be_edited():
     task = _first_task()
     get_db().review_tasks.update_one(
         {"task_id": task["task_id"]}, {"$set": {"status": "approved"}}

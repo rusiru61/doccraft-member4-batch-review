@@ -79,7 +79,7 @@ def test_failed_document_still_has_routing_and_no_task(clean_test_db):
 
 def test_low_score_task_records_low_reliability_reason(clean_test_db):
     _process(["DOC-003"])
-    assert client.get("/api/v1/review-tasks").json()[0]["review_reasons"] == ["low_reliability"]
+    assert client.get("/api/v1/review-tasks").json()[0]["review_reasons"] == ["low_reliability", "required_field_problem"]
 
 
 def test_task_can_have_both_reasons(clean_test_db):
@@ -87,4 +87,4 @@ def test_task_can_have_both_reasons(clean_test_db):
     _make_unknown(batch_id)
     client.post(f"/api/v1/batches/{batch_id}/process")
     reasons = client.get("/api/v1/review-tasks").json()[0]["review_reasons"]
-    assert reasons == ["low_reliability", "unknown_language"]
+    assert reasons == ["low_reliability", "required_field_problem", "unknown_language"]
