@@ -12,7 +12,7 @@ client = TestClient(app)
 
 def _create(ids=("DOC-001",)):
     body = {"name": "T", "priority": "high", "document_ids": list(ids)}
-    return client.post("/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/batches", json=body).json()["batch_id"]
 
 
 def test_ensure_indexes_is_idempotent():
@@ -53,14 +53,14 @@ def test_list_batches_does_not_query_once_per_batch(monkeypatch):
         raise AssertionError("count_by_status must not be called once per batch")
 
     monkeypatch.setattr(batch_repository, "count_by_status", forbidden)
-    response = client.get("/batches")
+    response = client.get("/api/v1/batches")
     assert response.status_code == 200
     assert len(response.json()) == 3
 
 
 def test_list_progress_matches_detail_progress():
     batch_id = _create([f"DOC-{n:03d}" for n in range(1, 11)])
-    client.post(f"/batches/{batch_id}/process")
-    listed = client.get("/batches").json()[0]
-    detail = client.get(f"/batches/{batch_id}").json()
+    client.post(f"/api/v1/batches/{batch_id}/process")
+    listed = client.get("/api/v1/batches").json()[0]
+    detail = client.get(f"/api/v1/batches/{batch_id}").json()
     assert listed["progress"] == detail["progress"]

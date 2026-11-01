@@ -32,8 +32,8 @@ def get_log(
     action: AuditAction | None,
     batch_id: str | None,
     entity_id: str | None,
-    limit: int,
-    offset: int,
+    page: int,
+    page_size: int,
 ) -> AuditLogPage:
     filters = {
         "user_id": user_id,
@@ -41,7 +41,7 @@ def get_log(
         "batch_id": batch_id,
         "entity_id": entity_id,
     }
-    rows, total = repo.list_entries(filters, limit, offset)
+    rows, total = repo.list_entries(filters, page_size, (page - 1) * page_size)
     return AuditLogPage(
-        total=total, limit=limit, offset=offset, items=[AuditEntry(**r) for r in rows]
+        total=total, page=page, page_size=page_size, items=[AuditEntry(**r) for r in rows]
     )

@@ -1,16 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
+from app.core.errors import ApiError
 from app.integrations.auth_service import CurrentUser, get_current_user
 from app.integrations.document_provider import DocumentProvider, get_document_provider
 from app.schemas.batch import BatchCreate, BatchDetailResponse, BatchResponse
-from app.services import batch_service
-from app.services import processing_service
+from app.services import batch_service, processing_service
 from app.services.batch_service import UnknownDocumentError
-from app.services.processing_service import BatchNotFoundError, BatchNotPendingError
-from app.tasks.processing_tasks import enqueue_batch_processing
 from app.services.processing_service import (
     BatchNotFoundError, BatchNotPendingError, QueueUnavailableError,
 )
+from app.tasks.processing_tasks import enqueue_batch_processing
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
@@ -24,7 +23,7 @@ def create_batch(
     try:
         return batch_service.create_batch(payload, provider, user)
     except UnknownDocumentError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise ApiError(422, "DOCUMENT_NOT_FOUND", str(exc))
 
 
 @router.get("", response_model=list[BatchResponse])
@@ -36,17 +35,18 @@ def list_batches():
 def get_batch(batch_id: str):
     batch = batch_service.get_batch_detail(batch_id)
     if batch is None:
-        raise HTTPException(status_code=404, detail="Batch not found")
+        raise ApiError(404, "JOB_NOT_FOUND", "The requested job was not found.")
     return batch
+
 
 @router.post("/{batch_id}/process", status_code=202)
 def process_batch(batch_id: str, user: CurrentUser = Depends(get_current_user)):
     try:
         processing_service.start_processing(batch_id, user, enqueue_batch_processing)
     except BatchNotFoundError:
-        raise HTTPException(status_code=404, detail="Batch not found")
+        raise ApiError(404, "JOB_NOT_FOUND", "The requested job was not found.")
     except BatchNotPendingError:
-        raise HTTPException(status_code=409, detail="Batch has already been started")
+        raise ApiError(409, "JOB_ALREADY_STARTED", "This job has already been started.")
     except QueueUnavailableError:
-        raise HTTPException(status_code=503, detail="Job queue unavailable, please try again")
+        raise ApiError(503, "QUEUE_UNAVAILABLE", "The job queue is unavailable, please try again.")
     return {"batch_id": batch_id, "status": "processing"}

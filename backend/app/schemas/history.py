@@ -23,6 +23,6 @@ class JobHistoryEntry(BaseModel):
 
 class JobHistoryPage(BaseModel):
     total: int
-    limit: int
-    offset: int
+    page: int
+    page_size: int
     items: list[JobHistoryEntry]

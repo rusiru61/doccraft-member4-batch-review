@@ -3,7 +3,7 @@ import time
 import uuid
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from app.core.errors import error_response
 
 from app.core.logging_config import request_id_var
 
@@ -20,10 +20,7 @@ async def request_context_middleware(request: Request, call_next):
         except Exception:
             # Last resort for bugs nobody anticipated: full detail in the log, little for the client.
             logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-            response = JSONResponse(
-                status_code=500,
-                content={"detail": "Internal server error", "request_id": request_id},
-            )
+            response = error_response(500, "INTERNAL_ERROR", "Internal server error")
         elapsed_ms = (time.perf_counter() - started) * 1000
         logger.info(
             "%s %s -> %d (%.0f ms)",

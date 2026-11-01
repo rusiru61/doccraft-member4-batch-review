@@ -28,8 +28,9 @@ def _to_entry(batch: dict, stats: dict) -> JobHistoryEntry:
     )
 
 
-def get_history(status: BatchStatus | None, limit: int, offset: int) -> JobHistoryPage:
-    batches, total = repo.list_batches_page(status.value if status else None, limit, offset)
+def get_history(status: BatchStatus | None, page: int, page_size: int) -> JobHistoryPage:
+    offset = (page - 1) * page_size
+    batches, total = repo.list_batches_page(status.value if status else None, page_size, offset)
     stats = repo.summarize_items([b["batch_id"] for b in batches]) if batches else {}
     entries = [_to_entry(b, stats.get(b["batch_id"], {})) for b in batches]
-    return JobHistoryPage(total=total, limit=limit, offset=offset, items=entries)
+    return JobHistoryPage(total=total, page=page, page_size=page_size, items=entries)

@@ -51,9 +51,10 @@ def test_log_records_carry_the_request_id():
 
 def test_unexpected_error_returns_clean_500_without_internals():
     response = TestClient(_app_that_crashes()).get("/boom")
+    body = response.json()["error"]
     assert response.status_code == 500
-    body = response.json()
-    assert body["detail"] == "Internal server error"
+    assert body["code"] == "INTERNAL_ERROR"
+    assert body["message"] == "Internal server error"
     assert "hunter2" not in response.text
     assert body["request_id"] == response.headers["X-Request-ID"]
 
@@ -70,8 +71,8 @@ def test_database_outage_returns_503_with_request_id(monkeypatch):
         raise ServerSelectionTimeoutError("mongo is down")
 
     monkeypatch.setattr("app.repositories.batch_repository.list_batches", database_down)
-    response = client.get("/batches")
+    response = client.get("/api/v1/batches")
     assert response.status_code == 503
-    body = response.json()
-    assert body["detail"] == "Database unavailable"
+    body = response.json()["error"]
+    assert body["code"] == "DATABASE_UNAVAILABLE"
     assert body["request_id"] == response.headers["X-Request-ID"]
