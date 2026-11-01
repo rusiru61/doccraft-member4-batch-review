@@ -13,11 +13,11 @@ TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
 
 def _create(ids=("DOC-001",), name="T"):
     body = {"name": name, "priority": "high", "document_ids": list(ids)}
-    return client.post("/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/batches", json=body).json()["batch_id"]
 
 
 def _history(**params):
-    return client.get("/job-history", params=params).json()
+    return client.get("/api/v1/job-history", params=params).json()
 
 
 def test_creation_event_is_recorded():  # US-11 AC1
@@ -33,7 +33,7 @@ def test_creation_event_is_recorded():  # US-11 AC1
 
 def test_processed_batch_shows_counts_and_duration():
     batch_id = _create(TEN_DOCS)
-    client.post(f"/batches/{batch_id}/process")
+    client.post(f"/api/v1/batches/{batch_id}/process")
     entry = _history()["items"][0]
     assert entry["status"] == "completed"
     assert (entry["total"], entry["completed"], entry["failed"]) == (10, 9, 1)
@@ -54,7 +54,7 @@ def test_history_is_newest_first():
 def test_history_can_be_filtered_by_status():
     pending = _create(name="pending")
     done = _create(["DOC-001"], name="done")
-    client.post(f"/batches/{done}/process")
+    client.post(f"/api/v1/batches/{done}/process")
     assert [e["batch_id"] for e in _history(status="completed")["items"]] == [done]
     assert [e["batch_id"] for e in _history(status="pending")["items"]] == [pending]
 
@@ -62,24 +62,25 @@ def test_history_can_be_filtered_by_status():
 def test_pagination_returns_slices_and_total():
     for n in range(3):
         _create(name=f"b{n}")
-    first = _history(limit=2, offset=0)
-    second = _history(limit=2, offset=2)
+    first = _history(page=1, page_size=2)
+    second = _history(page=2, page_size=2)
     assert first["total"] == 3 and len(first["items"]) == 2
+    assert (first["page"], first["page_size"]) == (1, 2)
     assert len(second["items"]) == 1
     assert not {e["batch_id"] for e in first["items"]} & {e["batch_id"] for e in second["items"]}
 
 
-@pytest.mark.parametrize("limit", [0, 101])
-def test_limit_outside_allowed_range_is_rejected(limit):
-    assert client.get("/job-history", params={"limit": limit}).status_code == 422
+@pytest.mark.parametrize("params", [{"page_size": 0}, {"page_size": 101}, {"page": 0}])
+def test_page_parameters_outside_allowed_range_are_rejected(params):
+    assert client.get("/api/v1/job-history", params=params).status_code == 422
 
 
 def test_pending_review_count_drops_after_approval():
     batch_id = _create(["DOC-005"])
-    client.post(f"/batches/{batch_id}/process")
+    client.post(f"/api/v1/batches/{batch_id}/process")
     assert _history()["items"][0]["pending_review"] == 1
-    task_id = client.get("/review-tasks").json()[0]["task_id"]
-    client.post(f"/review-tasks/{task_id}/finalize")
+    task_id = client.get("/api/v1/review-tasks").json()[0]["task_id"]
+    client.post(f"/api/v1/review-tasks/{task_id}/finalize")
     assert _history()["items"][0]["pending_review"] == 0
 
 

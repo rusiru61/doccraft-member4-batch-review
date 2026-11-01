@@ -10,14 +10,14 @@ client = TestClient(app)
 
 def _first_task():
     body = {"name": "T", "priority": "high", "document_ids": ["DOC-003"]}
-    batch_id = client.post("/batches", json=body).json()["batch_id"]
-    client.post(f"/batches/{batch_id}/process")
-    return client.get("/review-tasks").json()[0]
+    batch_id = client.post("/api/v1/batches", json=body).json()["batch_id"]
+    client.post(f"/api/v1/batches/{batch_id}/process")
+    return client.get("/api/v1/review-tasks").json()[0]
 
 
 def _fix_supplier(task_id, value="ABC Traders"):
     body = {"corrections": [{"name": "supplier_name", "value": value}]}
-    return client.patch(f"/review-tasks/{task_id}/fields", json=body)
+    return client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=body)
 
 
 def _field(detail, name):
@@ -26,7 +26,7 @@ def _field(detail, name):
 
 def test_detail_shows_flagged_missing_field():
     task = _first_task()
-    detail = client.get(f"/review-tasks/{task['task_id']}").json()
+    detail = client.get(f"/api/v1/review-tasks/{task['task_id']}").json()
     supplier = _field(detail, "supplier_name")
     assert supplier["flagged"] and not supplier["found"]
     assert supplier["current_value"] is None
@@ -46,7 +46,7 @@ def test_correction_is_saved():  # US-08 AC1
 def test_reopened_task_shows_corrected_values():  # US-08 AC2
     task = _first_task()
     _fix_supplier(task["task_id"])
-    detail = client.get(f"/review-tasks/{task['task_id']}").json()
+    detail = client.get(f"/api/v1/review-tasks/{task['task_id']}").json()
     assert _field(detail, "supplier_name")["current_value"] == "ABC Traders"
 
 
@@ -69,7 +69,7 @@ def test_correction_records_who_and_when():
 def test_unknown_field_is_rejected():
     task = _first_task()
     body = {"corrections": [{"name": "not_a_field", "value": "x"}]}
-    assert client.patch(f"/review-tasks/{task['task_id']}/fields", json=body).status_code == 422
+    assert client.patch(f"/api/v1/review-tasks/{task['task_id']}/fields", json=body).status_code == 422
 
 
 def test_blank_value_is_rejected():
@@ -86,5 +86,5 @@ def test_completed_task_cannot_be_edited():
 
 
 def test_unknown_task_returns_404():
-    assert client.get("/review-tasks/REV-NOPE").status_code == 404
+    assert client.get("/api/v1/review-tasks/REV-NOPE").status_code == 404
     assert _fix_supplier("REV-NOPE").status_code == 404
