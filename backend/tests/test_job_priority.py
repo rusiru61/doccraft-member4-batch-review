@@ -16,7 +16,7 @@ USER = CurrentUser(user_id="user_001", role="operator")
 
 def _create(priority="medium"):
     body = {"name": "T", "priority": priority, "document_ids": ["DOC-001"]}
-    return client.post("/api/v1/jobs", json=body).json()["job_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 class _FakeTask:
@@ -59,7 +59,7 @@ def test_start_processing_passes_the_job_priority_to_the_queue():
 def test_started_at_is_set_by_the_worker_not_when_queued():
     job_id = _create("high")
     processing_service.start_processing(job_id, USER, lambda b, p: None)  # queued, no worker yet
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["started_at"] is None
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["started_at"] is None
 
     processing_service.process_job(job_id, MockExtractionService(), MockOcrService())
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["started_at"] is not None
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["started_at"] is not None

@@ -14,7 +14,7 @@ TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
 
 def _create(ids, name="Demo", priority="high"):
     return client.post(
-        "/api/v1/jobs", json={"name": name, "priority": priority, "document_ids": ids}
+        "/api/v1/extraction-jobs", json={"name": name, "priority": priority, "document_ids": ids}
     )
 
 
@@ -24,7 +24,7 @@ def test_create_job_has_pending_status_and_five_items():  # US-01 AC1, AC2
     body = response.json()
     assert body["status"] == "pending"
     assert body["progress"]["total"] == 5
-    detail = client.get(f"/api/v1/jobs/{body['job_id']}").json()
+    detail = client.get(f"/api/v1/extraction-jobs/{body['job_id']}").json()
     assert len(detail["items"]) == 5
 
 
@@ -42,7 +42,7 @@ def test_empty_document_list_is_rejected():
 
 
 def test_unknown_job_returns_404():
-    assert client.get("/api/v1/jobs/JOB-DOESNOTEXIST").status_code == 404
+    assert client.get("/api/v1/extraction-jobs/JOB-DOESNOTEXIST").status_code == 404
 
 
 def test_progress_percentage():  # US-02 AC1, AC2
@@ -51,7 +51,7 @@ def test_progress_percentage():  # US-02 AC1, AC2
     job_oid = ObjectId(job_id)
     first_four = [r["_id"] for r in results.find({"job_id": job_oid}).limit(4)]
     results.update_many({"_id": {"$in": first_four}}, {"$set": {"status": "completed"}})
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["progress"]["percent_complete"] == 40.0
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["progress"]["percent_complete"] == 40.0
 
     results.update_many({"job_id": job_oid}, {"$set": {"status": "completed"}})
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["progress"]["percent_complete"] == 100.0
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["progress"]["percent_complete"] == 100.0

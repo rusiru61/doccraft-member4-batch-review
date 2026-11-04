@@ -19,12 +19,12 @@ DEFINITIONS = MockDataStructureProvider().get_field_definitions()
 
 def _create(ids):
     body = {"name": "T", "priority": "high", "document_ids": list(ids)}
-    return client.post("/api/v1/jobs", json=body).json()["job_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 def _process(ids):
     job_id = _create(ids)
-    client.post(f"/api/v1/jobs/{job_id}/process")
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     return job_id
 
 
@@ -37,8 +37,8 @@ def test_to_object_id_accepts_only_valid_ids():
 
 def test_public_ids_are_object_id_strings():
     job_id = _process(["DOC-003"])
-    item = client.get(f"/api/v1/jobs/{job_id}").json()["items"][0]
-    task = client.get("/api/v1/review-tasks").json()[0]
+    item = client.get(f"/api/v1/extraction-jobs/{job_id}").json()["items"][0]
+    task = client.get("/api/v1/extraction-results").json()[0]
     for value in (job_id, item["result_id"], task["result_id"]):
         assert re.fullmatch(r"[0-9a-f]{24}", value)
     assert item["result_id"] == task["result_id"]  # one result is both the item and its review task
@@ -47,10 +47,10 @@ def test_public_ids_are_object_id_strings():
 
 def test_malformed_and_unknown_ids_return_404_not_500():
     for bad in ("JOB-NOPE", "0" * 24):
-        assert client.get(f"/api/v1/jobs/{bad}").status_code == 404
-        assert client.post(f"/api/v1/jobs/{bad}/process").status_code == 404
-        assert client.get(f"/api/v1/review-tasks/{bad}").status_code == 404
-        assert client.post(f"/api/v1/review-tasks/{bad}/finalize").status_code == 404
+        assert client.get(f"/api/v1/extraction-jobs/{bad}").status_code == 404
+        assert client.post(f"/api/v1/extraction-jobs/{bad}/process").status_code == 404
+        assert client.get(f"/api/v1/extraction-results/{bad}").status_code == 404
+        assert client.post(f"/api/v1/extraction-results/{bad}/approve").status_code == 404
 
 
 def test_results_are_stored_in_one_collection():
@@ -97,13 +97,6 @@ def test_decide_review_flags_a_required_problem_even_with_a_perfect_score():
     decision = decide_review(result, DEFINITIONS, 1.0)
     assert decision["review_reasons"] == ["required_field_problem"]
     assert decision["flagged_fields"] == ["supplier_name"]
-
-
-def test_a_result_that_needs_no_review_is_not_a_task():
-    job_id = _process(["DOC-001"])
-    result_id = client.get(f"/api/v1/jobs/{job_id}").json()["items"][0]["result_id"]
-    assert client.get(f"/api/v1/review-tasks/{result_id}").status_code == 404
-    assert client.get("/api/v1/review-tasks", params={"status": "approved"}).json() == []
 
 
 def test_finalized_results_for_an_unknown_job_is_empty():

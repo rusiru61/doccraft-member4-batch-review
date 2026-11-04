@@ -9,23 +9,23 @@ client = TestClient(app)
 
 def _process(ids):
     body = {"name": "T", "priority": "high", "document_ids": ids}
-    job_id = client.post("/api/v1/jobs", json=body).json()["job_id"]
-    client.post(f"/api/v1/jobs/{job_id}/process")
+    job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     return job_id
 
 
 def _task_for(doc_id):
-    tasks = client.get("/api/v1/review-tasks").json()
+    tasks = client.get("/api/v1/extraction-results").json()
     return next(t for t in tasks if t["document_id"] == doc_id)
 
 
 def _fix_supplier(result_id, value="ABC Traders"):
     body = {"corrections": [{"field_id": "supplier_name", "value": value}]}
-    return client.patch(f"/api/v1/review-tasks/{result_id}/fields", json=body)
+    return client.patch(f"/api/v1/extraction-results/{result_id}", json=body)
 
 
 def _finalize(result_id):
-    return client.post(f"/api/v1/review-tasks/{result_id}/finalize")
+    return client.post(f"/api/v1/extraction-results/{result_id}/approve")
 
 
 def _results(job_id=None):
@@ -47,8 +47,8 @@ def test_finalize_sets_status_approved():  # US-09 AC1
     _fix_supplier(result_id)
     response = _finalize(result_id)
     assert response.status_code == 200
-    assert response.json()["status"] == "approved"
-    assert response.json()["approved_by"] == "user_001"
+    assert response.json()["review_status"] == "approved"
+    assert response.json()["reviewed_by"] == "user_001"
 
 
 def test_task_without_problem_fields_can_be_approved_as_is():
@@ -61,7 +61,7 @@ def test_approved_task_leaves_the_queue():
     result_id = _task_for("DOC-003")["result_id"]
     _fix_supplier(result_id)
     _finalize(result_id)
-    assert client.get("/api/v1/review-tasks").json() == []
+    assert client.get("/api/v1/extraction-results").json() == []
 
 
 def test_approved_document_appears_in_finalized_results():  # US-09 AC2
@@ -89,7 +89,7 @@ def test_results_contain_auto_passed_but_not_unreviewed_documents():
     assert results[0]["finalized_by"] == "system"
     assert [f["status"] for f in results[0]["fields"]] == ["extracted"] * 3
 
-    items = client.get(f"/api/v1/jobs/{job_id}").json()["items"]
+    items = client.get(f"/api/v1/extraction-jobs/{job_id}").json()["items"]
     by_doc = {i["document_id"]: i for i in items}
     assert by_doc["DOC-003"]["review_status"] == "pending_review"
 

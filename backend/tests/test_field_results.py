@@ -83,8 +83,8 @@ def test_final_fields_prefer_corrections_and_ignore_unexpected_keys():
 @pytest.mark.usefixtures("clean_test_db")
 def test_field_definitions_are_snapshotted_on_each_item():
     body = {"name": "T", "priority": "high", "document_ids": ["DOC-001"]}
-    job_id = client.post("/api/v1/jobs", json=body).json()["job_id"]
-    client.post(f"/api/v1/jobs/{job_id}/process")
+    job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     item = get_db().extraction_results.find_one({"job_id": ObjectId(job_id)})
     assert [d["field_id"] for d in item["field_definitions"]] == [
         d.field_id for d in MockDataStructureProvider().get_field_definitions()
@@ -94,27 +94,27 @@ def test_field_definitions_are_snapshotted_on_each_item():
 @pytest.mark.usefixtures("clean_test_db")
 def test_invalid_required_field_blocks_finalizing_until_corrected():
     body = {"name": "T", "priority": "high", "document_ids": ["DOC-006"]}
-    job_id = client.post("/api/v1/jobs", json=body).json()["job_id"]
-    client.post(f"/api/v1/jobs/{job_id}/process")
-    task = client.get("/api/v1/review-tasks").json()[0]
+    job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
+    task = client.get("/api/v1/extraction-results").json()[0]
 
-    detail = client.get(f"/api/v1/review-tasks/{task['result_id']}").json()
+    detail = client.get(f"/api/v1/extraction-results/{task['result_id']}").json()
     supplier = next(f for f in detail["fields"] if f["field_id"] == "supplier_name")
     assert (supplier["status"], supplier["current_value"], supplier["flagged"]) == ("invalid", "???", True)
 
-    assert client.post(f"/api/v1/review-tasks/{task['result_id']}/finalize").status_code == 422
+    assert client.post(f"/api/v1/extraction-results/{task['result_id']}/approve").status_code == 422
     fix = {"corrections": [{"field_id": "supplier_name", "value": "ABC Traders"}]}
-    client.patch(f"/api/v1/review-tasks/{task['result_id']}/fields", json=fix)
-    assert client.post(f"/api/v1/review-tasks/{task['result_id']}/finalize").status_code == 200
+    client.patch(f"/api/v1/extraction-results/{task['result_id']}", json=fix)
+    assert client.post(f"/api/v1/extraction-results/{task['result_id']}/approve").status_code == 200
 
 
 @pytest.mark.usefixtures("clean_test_db")
 def test_perfect_scores_still_go_to_review_when_a_required_field_is_missing():
     body = {"name": "T", "priority": "high", "document_ids": ["DOC-001"]}
-    job_id = client.post("/api/v1/jobs", json=body).json()["job_id"]
+    job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
     processing_service.process_job(job_id, _ConfidentButIncomplete(), _PerfectOcr())
 
-    tasks = client.get("/api/v1/review-tasks").json()
+    tasks = client.get("/api/v1/extraction-results").json()
     assert len(tasks) == 1
     assert tasks[0]["reliability_score"] == 0.8  # exactly the threshold, so the score alone passes
     assert tasks[0]["review_reasons"] == ["required_field_problem"]

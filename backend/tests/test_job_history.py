@@ -14,7 +14,7 @@ TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
 
 def _create(ids=("DOC-001",), name="T"):
     body = {"name": name, "priority": "high", "document_ids": list(ids)}
-    return client.post("/api/v1/jobs", json=body).json()["job_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 def _history(**params):
@@ -34,7 +34,7 @@ def test_creation_event_is_recorded():  # US-11 AC1
 
 def test_processed_job_shows_counts_and_duration():
     job_id = _create(TEN_DOCS)
-    client.post(f"/api/v1/jobs/{job_id}/process")
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     entry = _history()["items"][0]
     assert entry["status"] == "completed"
     assert (entry["total"], entry["completed"], entry["failed"]) == (10, 9, 1)
@@ -56,7 +56,7 @@ def test_history_is_newest_first():
 def test_history_can_be_filtered_by_status():
     pending = _create(name="pending")
     done = _create(["DOC-001"], name="done")
-    client.post(f"/api/v1/jobs/{done}/process")
+    client.post(f"/api/v1/extraction-jobs/{done}/process")
     assert [e["job_id"] for e in _history(status="completed")["items"]] == [done]
     assert [e["job_id"] for e in _history(status="pending")["items"]] == [pending]
 
@@ -79,10 +79,10 @@ def test_page_parameters_outside_allowed_range_are_rejected(params):
 
 def test_pending_review_count_drops_after_approval():
     job_id = _create(["DOC-005"])
-    client.post(f"/api/v1/jobs/{job_id}/process")
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     assert _history()["items"][0]["pending_review"] == 1
-    result_id = client.get("/api/v1/review-tasks").json()[0]["result_id"]
-    client.post(f"/api/v1/review-tasks/{result_id}/finalize")
+    result_id = client.get("/api/v1/extraction-results").json()[0]["result_id"]
+    client.post(f"/api/v1/extraction-results/{result_id}/approve")
     assert _history()["items"][0]["pending_review"] == 0
 
 

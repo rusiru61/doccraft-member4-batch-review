@@ -11,14 +11,14 @@ client = TestClient(app)
 
 def _first_task():
     body = {"name": "T", "priority": "high", "document_ids": ["DOC-003"]}
-    job_id = client.post("/api/v1/jobs", json=body).json()["job_id"]
-    client.post(f"/api/v1/jobs/{job_id}/process")
-    return client.get("/api/v1/review-tasks").json()[0]
+    job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
+    return client.get("/api/v1/extraction-results").json()[0]
 
 
 def _fix_supplier(result_id, value="ABC Traders"):
     body = {"corrections": [{"field_id": "supplier_name", "value": value}]}
-    return client.patch(f"/api/v1/review-tasks/{result_id}/fields", json=body)
+    return client.patch(f"/api/v1/extraction-results/{result_id}", json=body)
 
 
 def _field(detail, field_id):
@@ -27,7 +27,7 @@ def _field(detail, field_id):
 
 def test_detail_shows_fields_in_order_with_the_flagged_one_marked():
     task = _first_task()
-    detail = client.get(f"/api/v1/review-tasks/{task['result_id']}").json()
+    detail = client.get(f"/api/v1/extraction-results/{task['result_id']}").json()
     assert [f["field_id"] for f in detail["fields"]] == [
         "invoice_number", "total_amount", "supplier_name",
     ]
@@ -52,7 +52,7 @@ def test_correction_is_saved():  # US-08 AC1
 def test_reopened_task_shows_corrected_values():  # US-08 AC2
     task = _first_task()
     _fix_supplier(task["result_id"])
-    detail = client.get(f"/api/v1/review-tasks/{task['result_id']}").json()
+    detail = client.get(f"/api/v1/extraction-results/{task['result_id']}").json()
     assert _field(detail, "supplier_name")["current_value"] == "ABC Traders"
 
 
@@ -75,7 +75,7 @@ def test_correction_records_who_and_when():
 def test_unknown_field_is_rejected():
     task = _first_task()
     body = {"corrections": [{"field_id": "not_a_field", "value": "x"}]}
-    response = client.patch(f"/api/v1/review-tasks/{task['result_id']}/fields", json=body)
+    response = client.patch(f"/api/v1/extraction-results/{task['result_id']}", json=body)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "UNKNOWN_FIELD"
 
@@ -94,5 +94,5 @@ def test_approved_task_cannot_be_edited():
 
 
 def test_unknown_task_returns_404():
-    assert client.get("/api/v1/review-tasks/REV-NOPE").status_code == 404
+    assert client.get("/api/v1/extraction-results/REV-NOPE").status_code == 404
     assert _fix_supplier("REV-NOPE").status_code == 404

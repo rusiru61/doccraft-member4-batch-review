@@ -11,7 +11,7 @@ from app.services.processing_service import (
 )
 from app.tasks.processing_tasks import enqueue_job_processing
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/extraction-jobs", tags=["extraction-jobs"])
 
 
 @router.post("", response_model=JobResponse, status_code=201)

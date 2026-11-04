@@ -13,7 +13,7 @@ client = TestClient(app)
 
 def _create(ids=("DOC-001",)):
     body = {"name": "T", "priority": "high", "document_ids": list(ids)}
-    return client.post("/api/v1/jobs", json=body).json()["job_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 def test_ensure_indexes_is_idempotent():
@@ -54,14 +54,14 @@ def test_list_jobs_does_not_query_once_per_job(monkeypatch):
         raise AssertionError("count_by_status must not be called once per job")
 
     monkeypatch.setattr(job_repository, "count_by_status", forbidden)
-    response = client.get("/api/v1/jobs")
+    response = client.get("/api/v1/extraction-jobs")
     assert response.status_code == 200
     assert len(response.json()) == 3
 
 
 def test_list_progress_matches_detail_progress():
     job_id = _create([f"DOC-{n:03d}" for n in range(1, 11)])
-    client.post(f"/api/v1/jobs/{job_id}/process")
-    listed = client.get("/api/v1/jobs").json()[0]
-    detail = client.get(f"/api/v1/jobs/{job_id}").json()
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
+    listed = client.get("/api/v1/extraction-jobs").json()[0]
+    detail = client.get(f"/api/v1/extraction-jobs/{job_id}").json()
     assert listed["progress"] == detail["progress"]

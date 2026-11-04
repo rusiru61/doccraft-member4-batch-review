@@ -17,7 +17,7 @@ client = TestClient(app)
 
 def _create(ids):
     body = {"name": "T", "priority": "high", "document_ids": ids}
-    return client.post("/api/v1/jobs", json=body).json()["job_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 def test_task_is_registered_with_safe_settings():
@@ -34,15 +34,15 @@ def test_queue_outage_returns_503_and_leaves_job_pending(monkeypatch):
 
     with monkeypatch.context() as patch:
         patch.setattr("app.api.jobs.enqueue_job_processing", broken_queue)
-        assert client.post(f"/api/v1/jobs/{job_id}/process").status_code == 503
+        assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 503
 
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["status"] == "pending"
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "pending"
     started = client.get("/api/v1/audit-log", params={"action": "job.processing_started"}).json()
     assert started["total"] == 0  # nothing happened, so nothing is audited
 
     # Once the queue is back, the same job can be started normally.
-    assert client.post(f"/api/v1/jobs/{job_id}/process").status_code == 202
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["status"] == "completed"
+    assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 202
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "completed"
 
 
 def test_resumed_processing_skips_finished_items():
@@ -61,7 +61,7 @@ def test_resumed_processing_skips_finished_items():
 
     processing_service.process_job(job_id, MockExtractionService(), MockOcrService())
 
-    detail = client.get(f"/api/v1/jobs/{job_id}").json()
+    detail = client.get(f"/api/v1/extraction-jobs/{job_id}").json()
     items = {i["document_id"]: i for i in detail["items"]}
     assert detail["status"] == "completed"
     assert items["DOC-001"]["reliability_score"] == 0.123  # untouched: not reprocessed
@@ -71,10 +71,10 @@ def test_resumed_processing_skips_finished_items():
 
 def test_running_a_finished_job_again_changes_nothing():
     job_id = _create(["DOC-003"])
-    client.post(f"/api/v1/jobs/{job_id}/process")
-    before = client.get(f"/api/v1/jobs/{job_id}").json()["items"]
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
+    before = client.get(f"/api/v1/extraction-jobs/{job_id}").json()["items"]
 
     processing_service.process_job(job_id, MockExtractionService(), MockOcrService())
 
-    assert client.get(f"/api/v1/jobs/{job_id}").json()["items"] == before
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["items"] == before
     assert get_db().extraction_results.count_documents({"review_status": "pending_review"}) == 1
