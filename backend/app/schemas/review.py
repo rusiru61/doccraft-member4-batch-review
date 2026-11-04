@@ -13,9 +13,9 @@ class ReviewStatus(str, Enum):
 
 
 class ReviewTaskResponse(BaseModel):
-    task_id: str
-    batch_id: str
-    item_id: str
+    result_id: str
+    job_id: str
+    result_id: str
     document_id: str
     filename: str
     reliability_score: float

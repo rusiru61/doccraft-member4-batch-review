@@ -11,8 +11,8 @@ class FinalField(BaseModel):
     status: str  # extracted, missing, invalid, or corrected
 
 class FinalizedResult(BaseModel):
-    item_id: str
-    batch_id: str
+    result_id: str
+    job_id: str
     document_id: str
     filename: str
     reliability_score: float

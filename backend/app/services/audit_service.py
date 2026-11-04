@@ -10,7 +10,7 @@ def record(
     action: AuditAction,
     entity_type: str,
     entity_id: str,
-    batch_id: str | None = None,
+    job_id: str | None = None,
     details: dict | None = None,
 ) -> None:
     repo.insert_entry(
@@ -21,7 +21,7 @@ def record(
             "action": action.value,
             "entity_type": entity_type,
             "entity_id": entity_id,
-            "batch_id": batch_id,
+            "job_id": job_id,
             "details": details or {},
         }
     )
@@ -30,7 +30,7 @@ def record(
 def get_log(
     user_id: str | None,
     action: AuditAction | None,
-    batch_id: str | None,
+    job_id: str | None,
     entity_id: str | None,
     page: int,
     page_size: int,
@@ -38,7 +38,7 @@ def get_log(
     filters = {
         "user_id": user_id,
         "action": action.value if action else None,
-        "batch_id": batch_id,
+        "job_id": job_id,
         "entity_id": entity_id,
     }
     rows, total = repo.list_entries(filters, page_size, (page - 1) * page_size)

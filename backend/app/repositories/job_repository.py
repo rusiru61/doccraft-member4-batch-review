@@ -7,11 +7,11 @@ from app.core.ids import to_object_id
 
 
 def job_from_doc(doc: dict | None) -> dict | None:
-    """Database document -> the dict the services use (batch_id is the string form of _id)."""
+    """Database document -> the dict the services use (job_id is the string form of _id)."""
     if doc is None:
         return None
     doc = dict(doc)
-    doc["batch_id"] = str(doc.pop("_id"))
+    doc["job_id"] = str(doc.pop("_id"))
     return doc
 
 
@@ -19,50 +19,50 @@ def result_from_doc(doc: dict | None) -> dict | None:
     if doc is None:
         return None
     doc = dict(doc)
-    doc["item_id"] = str(doc.pop("_id"))
-    doc["batch_id"] = str(doc.pop("job_id"))
+    doc["result_id"] = str(doc.pop("_id"))
+    doc["job_id"] = str(doc.pop("job_id"))
     return doc
 
 
-def insert_batch(batch: dict, items: list[dict]) -> str:
+def insert_job(job: dict, items: list[dict]) -> str:
     """Store a job and its results. Returns the new job ID as a string."""
     db = get_db()
     job_id = ObjectId()
     # Results first: if this fails, no job exists. A job with no results would look broken.
     db.extraction_results.insert_many([{**item, "job_id": job_id} for item in items])
-    db.extraction_jobs.insert_one({**batch, "_id": job_id})
+    db.extraction_jobs.insert_one({**job, "_id": job_id})
     return str(job_id)
 
 
-def find_batch(batch_id: str) -> dict | None:
-    oid = to_object_id(batch_id)
+def find_job(job_id: str) -> dict | None:
+    oid = to_object_id(job_id)
     if oid is None:
         return None
     return job_from_doc(get_db().extraction_jobs.find_one({"_id": oid}))
 
 
-def list_batches() -> list[dict]:
+def list_jobs() -> list[dict]:
     rows = get_db().extraction_jobs.find({}).sort([("created_at", -1), ("_id", 1)])
     return [job_from_doc(d) for d in rows]
 
 
-def list_items(batch_id: str) -> list[dict]:
-    oid = to_object_id(batch_id)
+def list_items(job_id: str) -> list[dict]:
+    oid = to_object_id(job_id)
     if oid is None:
         return []
     rows = get_db().extraction_results.find({"job_id": oid}).sort("_id", 1)
     return [result_from_doc(d) for d in rows]
 
 
-def find_item(item_id: str) -> dict | None:
-    oid = to_object_id(item_id)
+def find_item(result_id: str) -> dict | None:
+    oid = to_object_id(result_id)
     if oid is None:
         return None
     return result_from_doc(get_db().extraction_results.find_one({"_id": oid}))
 
 
-def count_by_status(batch_id: str) -> dict[str, int]:
-    oid = to_object_id(batch_id)
+def count_by_status(job_id: str) -> dict[str, int]:
+    oid = to_object_id(job_id)
     if oid is None:
         return {}
     pipeline = [
@@ -72,9 +72,9 @@ def count_by_status(batch_id: str) -> dict[str, int]:
     return {row["_id"]: row["count"] for row in get_db().extraction_results.aggregate(pipeline)}
 
 
-def try_mark_batch_processing(batch_id: str) -> bool:
-    """Compare-and-set: succeeds only if the batch is still 'pending'."""
-    oid = to_object_id(batch_id)
+def try_mark_job_processing(job_id: str) -> bool:
+    """Compare-and-set: succeeds only if the job is still 'pending'."""
+    oid = to_object_id(job_id)
     if oid is None:
         return False
     result = get_db().extraction_jobs.update_one(
@@ -83,9 +83,9 @@ def try_mark_batch_processing(batch_id: str) -> bool:
     return result.modified_count == 1
 
 
-def mark_batch_started(batch_id: str) -> None:
-    """Called by the worker. Keeps the first start time if the batch is resumed."""
-    oid = to_object_id(batch_id)
+def mark_job_started(job_id: str) -> None:
+    """Called by the worker. Keeps the first start time if the job is resumed."""
+    oid = to_object_id(job_id)
     if oid is None:
         return
     get_db().extraction_jobs.update_one(
@@ -94,8 +94,8 @@ def mark_batch_started(batch_id: str) -> None:
     )
 
 
-def set_batch_status(batch_id: str, status: str) -> None:
-    oid = to_object_id(batch_id)
+def set_job_status(job_id: str, status: str) -> None:
+    oid = to_object_id(job_id)
     if oid is None:
         return
     fields = {"status": status}
@@ -104,9 +104,9 @@ def set_batch_status(batch_id: str, status: str) -> None:
     get_db().extraction_jobs.update_one({"_id": oid}, {"$set": fields})
 
 
-def revert_batch_to_pending(batch_id: str) -> None:
+def revert_job_to_pending(job_id: str) -> None:
     """Undo the 'processing' mark when the job could not be queued."""
-    oid = to_object_id(batch_id)
+    oid = to_object_id(job_id)
     if oid is None:
         return
     get_db().extraction_jobs.update_one(
@@ -114,17 +114,17 @@ def revert_batch_to_pending(batch_id: str) -> None:
     )
 
 
-def update_item(item_id: str, fields: dict) -> None:
-    oid = to_object_id(item_id)
+def update_item(result_id: str, fields: dict) -> None:
+    oid = to_object_id(result_id)
     if oid is None:
         return
     get_db().extraction_results.update_one({"_id": oid}, {"$set": fields})
 
 
-def list_finalized(batch_id: str | None) -> list[dict]:
+def list_finalized(job_id: str | None) -> list[dict]:
     query: dict = {"review_status": {"$in": ["not_required", "approved"]}}
-    if batch_id:
-        oid = to_object_id(batch_id)
+    if job_id:
+        oid = to_object_id(job_id)
         if oid is None:
             return []
         query["job_id"] = oid
@@ -132,7 +132,7 @@ def list_finalized(batch_id: str | None) -> list[dict]:
     return [result_from_doc(d) for d in rows]
 
 
-def list_batches_page(status: str | None, limit: int, offset: int) -> tuple[list[dict], int]:
+def list_jobs_page(status: str | None, limit: int, offset: int) -> tuple[list[dict], int]:
     query = {"status": status} if status else {}
     collection = get_db().extraction_jobs
     rows = (
@@ -144,9 +144,9 @@ def list_batches_page(status: str | None, limit: int, offset: int) -> tuple[list
     return [job_from_doc(d) for d in rows], collection.count_documents(query)
 
 
-def summarize_items(batch_ids: list[str]) -> dict[str, dict]:
+def summarize_items(job_ids: list[str]) -> dict[str, dict]:
     """One database round trip for all jobs (avoids one query per job)."""
-    oids = [oid for oid in map(to_object_id, batch_ids) if oid is not None]
+    oids = [oid for oid in map(to_object_id, job_ids) if oid is not None]
     pipeline = [
         {"$match": {"job_id": {"$in": oids}}},
         {

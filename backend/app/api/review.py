@@ -27,22 +27,22 @@ def list_review_tasks(status: ReviewStatus | None = ReviewStatus.pending):
     return review_service.list_queue(status)
 
 
-@router.get("/{task_id}", response_model=ReviewTaskDetail)
-def get_review_task(task_id: str):
+@router.get("/{result_id}", response_model=ReviewTaskDetail)
+def get_review_task(result_id: str):
     try:
-        return review_service.get_task_detail(task_id)
+        return review_service.get_task_detail(result_id)
     except TaskNotFoundError:
         raise _not_found()
 
 
-@router.patch("/{task_id}/fields", response_model=ReviewTaskDetail)
+@router.patch("/{result_id}/fields", response_model=ReviewTaskDetail)
 def correct_fields(
-    task_id: str,
+    result_id: str,
     payload: CorrectionRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
     try:
-        return review_service.apply_corrections(task_id, payload, user)
+        return review_service.apply_corrections(result_id, payload, user)
     except TaskNotFoundError:
         raise _not_found()
     except TaskNotPendingError:
@@ -51,10 +51,10 @@ def correct_fields(
         raise ApiError(422, "UNKNOWN_FIELD", str(exc))
 
 
-@router.post("/{task_id}/finalize", response_model=ReviewTaskDetail)
-def finalize_task(task_id: str, user: CurrentUser = Depends(get_current_user)):
+@router.post("/{result_id}/finalize", response_model=ReviewTaskDetail)
+def finalize_task(result_id: str, user: CurrentUser = Depends(get_current_user)):
     try:
-        return review_service.finalize_task(task_id, user)
+        return review_service.finalize_task(result_id, user)
     except TaskNotFoundError:
         raise _not_found()
     except TaskNotPendingError:

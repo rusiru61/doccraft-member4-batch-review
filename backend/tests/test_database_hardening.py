@@ -4,7 +4,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.core.database import ensure_indexes, get_db
 from app.main import app
-from app.repositories import batch_repository
+from app.repositories import job_repository
 from bson import ObjectId
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
@@ -13,7 +13,7 @@ client = TestClient(app)
 
 def _create(ids=("DOC-001",)):
     body = {"name": "T", "priority": "high", "document_ids": list(ids)}
-    return client.post("/api/v1/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/jobs", json=body).json()["job_id"]
 
 
 def test_ensure_indexes_is_idempotent():
@@ -46,22 +46,22 @@ def test_audit_ids_are_unique():
 
 
 
-def test_list_batches_does_not_query_once_per_batch(monkeypatch):
+def test_list_jobs_does_not_query_once_per_job(monkeypatch):
     for _ in range(3):
         _create()
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("count_by_status must not be called once per batch")
+        raise AssertionError("count_by_status must not be called once per job")
 
-    monkeypatch.setattr(batch_repository, "count_by_status", forbidden)
-    response = client.get("/api/v1/batches")
+    monkeypatch.setattr(job_repository, "count_by_status", forbidden)
+    response = client.get("/api/v1/jobs")
     assert response.status_code == 200
     assert len(response.json()) == 3
 
 
 def test_list_progress_matches_detail_progress():
-    batch_id = _create([f"DOC-{n:03d}" for n in range(1, 11)])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    listed = client.get("/api/v1/batches").json()[0]
-    detail = client.get(f"/api/v1/batches/{batch_id}").json()
+    job_id = _create([f"DOC-{n:03d}" for n in range(1, 11)])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    listed = client.get("/api/v1/jobs").json()[0]
+    detail = client.get(f"/api/v1/jobs/{job_id}").json()
     assert listed["progress"] == detail["progress"]

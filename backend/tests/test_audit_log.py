@@ -9,46 +9,46 @@ client = TestClient(app)
 
 def _create(ids=("DOC-001",)):
     body = {"name": "T", "priority": "high", "document_ids": list(ids)}
-    return client.post("/api/v1/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/jobs", json=body).json()["job_id"]
 
 
 def _log(**params):
     return client.get("/api/v1/audit-log", params=params).json()
 
 
-def _fix_supplier(task_id, value="ABC Traders"):
+def _fix_supplier(result_id, value="ABC Traders"):
     body = {"corrections": [{"field_id": "supplier_name", "value": value}]}
-    return client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=body)
+    return client.patch(f"/api/v1/review-tasks/{result_id}/fields", json=body)
 
 
-def _task_id():
-    return client.get("/api/v1/review-tasks").json()[0]["task_id"]
+def _result_id():
+    return client.get("/api/v1/review-tasks").json()[0]["result_id"]
 
 
-def test_batch_creation_writes_one_audit_entry():
-    batch_id = _create(["DOC-001", "DOC-002"])
+def test_job_creation_writes_one_audit_entry():
+    job_id = _create(["DOC-001", "DOC-002"])
     page = _log()
     assert page["total"] == 1
     entry = page["items"][0]
-    assert entry["action"] == "batch.created"
+    assert entry["action"] == "job.created"
     assert entry["user_id"] == "user_001"
     assert entry["timestamp"] is not None
-    assert entry["entity_id"] == batch_id
+    assert entry["entity_id"] == job_id
     assert entry["details"]["document_count"] == 2
 
 
 def test_start_processing_is_audited_once():
-    batch_id = _create()
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    client.post(f"/api/v1/batches/{batch_id}/process")  # rejected with 409
-    started = _log(action="batch.processing_started")
+    job_id = _create()
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    client.post(f"/api/v1/jobs/{job_id}/process")  # rejected with 409
+    started = _log(action="job.processing_started")
     assert started["total"] == 1
 
 
 def test_correction_records_user_action_timestamp_and_before_after():  # US-11 AC2
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    _fix_supplier(_task_id())
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    _fix_supplier(_result_id())
     entry = _log(action="review.fields_corrected")["items"][0]
     assert entry["user_id"] == "user_001"
     assert entry["timestamp"] is not None
@@ -56,64 +56,64 @@ def test_correction_records_user_action_timestamp_and_before_after():  # US-11 A
 
 
 def test_second_correction_shows_the_previous_correction_as_from():
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    task_id = _task_id()
-    _fix_supplier(task_id, "ABC Traders")
-    _fix_supplier(task_id, "XYZ Ltd")
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    result_id = _result_id()
+    _fix_supplier(result_id, "ABC Traders")
+    _fix_supplier(result_id, "XYZ Ltd")
     newest = _log(action="review.fields_corrected")["items"][0]
     assert newest["details"]["changes"]["supplier_name"] == {"from": "ABC Traders", "to": "XYZ Ltd"}
 
 
 def test_finalizing_is_audited_with_corrected_fields():
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    task_id = _task_id()
-    _fix_supplier(task_id)
-    client.post(f"/api/v1/review-tasks/{task_id}/finalize")
-    entry = _log(action="review.task_approved")["items"][0]
-    assert entry["entity_id"] == task_id
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    result_id = _result_id()
+    _fix_supplier(result_id)
+    client.post(f"/api/v1/review-tasks/{result_id}/finalize")
+    entry = _log(action="review.result_approved")["items"][0]
+    assert entry["entity_id"] == result_id
     assert entry["details"]["corrected_fields"] == ["supplier_name"]
 
 
 def test_rejected_requests_write_no_audit_entry():
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    task_id = _task_id()
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    result_id = _result_id()
     before = _log()["total"]  # create + process = 2
 
     bad_field = {"corrections": [{"field_id": "banana", "value": "x"}]}
-    assert client.patch(f"/api/v1/review-tasks/{task_id}/fields", json=bad_field).status_code == 422
-    assert client.post(f"/api/v1/review-tasks/{task_id}/finalize").status_code == 422  # supplier empty
+    assert client.patch(f"/api/v1/review-tasks/{result_id}/fields", json=bad_field).status_code == 422
+    assert client.post(f"/api/v1/review-tasks/{result_id}/finalize").status_code == 422  # supplier empty
     assert _fix_supplier("REV-NOPE").status_code == 404
-    assert client.post(f"/api/v1/batches/{batch_id}/process").status_code == 409
+    assert client.post(f"/api/v1/jobs/{job_id}/process").status_code == 409
 
     assert _log()["total"] == before
 
 
 def test_read_requests_write_no_audit_entry():
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
     before = _log()["total"]
-    for path in ("/api/v1/batches", f"/api/v1/batches/{batch_id}", "/api/v1/review-tasks",
+    for path in ("/api/v1/jobs", f"/api/v1/jobs/{job_id}", "/api/v1/review-tasks",
                  "/api/v1/job-history", "/api/v1/finalized-results", "/api/v1/audit-log"):
         assert client.get(path).status_code == 200
     assert _log()["total"] == before
 
 
 def test_full_workflow_writes_exactly_one_entry_per_action():  # NFR 3
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    task_id = _task_id()
-    _fix_supplier(task_id)
-    client.post(f"/api/v1/review-tasks/{task_id}/finalize")
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    result_id = _result_id()
+    _fix_supplier(result_id)
+    client.post(f"/api/v1/review-tasks/{result_id}/finalize")
 
     entries = _log()["items"]
     assert [e["action"] for e in entries] == [
-        "review.task_approved",
+        "review.result_approved",
         "review.fields_corrected",
-        "batch.processing_started",
-        "batch.created",
+        "job.processing_started",
+        "job.created",
     ]
     assert all(e["user_id"] == "user_001" and e["timestamp"] for e in entries)
 
@@ -121,11 +121,11 @@ def test_full_workflow_writes_exactly_one_entry_per_action():  # NFR 3
 def test_audit_log_filters():
     first = _create(["DOC-001"])
     second = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{second}/process")
+    client.post(f"/api/v1/jobs/{second}/process")
 
-    assert _log(action="batch.created")["total"] == 2
-    assert _log(batch_id=second)["total"] == 2
-    assert _log(batch_id=first)["total"] == 1
+    assert _log(action="job.created")["total"] == 2
+    assert _log(job_id=second)["total"] == 2
+    assert _log(job_id=first)["total"] == 1
     assert _log(entity_id=second)["total"] == 2
     assert _log(user_id="user_001")["total"] == 3
     assert _log(user_id="nobody")["total"] == 0

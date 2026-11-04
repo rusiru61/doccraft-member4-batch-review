@@ -10,10 +10,10 @@ router = APIRouter(prefix="/audit-log", tags=["audit"])
 def list_audit_log(
     user_id: str | None = None,
     action: AuditAction | None = None,
-    batch_id: str | None = None,
+    job_id: str | None = None,
     entity_id: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
     """Read-only record of who did what, newest first."""
-    return audit_service.get_log(user_id, action, batch_id, entity_id, page, page_size)
+    return audit_service.get_log(user_id, action, job_id, entity_id, page, page_size)

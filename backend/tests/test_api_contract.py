@@ -10,15 +10,15 @@ ALLOWED_ERROR_KEYS = {"code", "message", "details", "request_id"}
 
 def _create(ids=("DOC-001",)):
     body = {"name": "T", "priority": "high", "document_ids": list(ids)}
-    return client.post("/api/v1/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/jobs", json=body).json()["job_id"]
 
 
 def test_api_is_served_under_the_v1_prefix():
-    assert client.get("/api/v1/batches").status_code == 200
+    assert client.get("/api/v1/jobs").status_code == 200
 
 
 def test_old_unprefixed_paths_are_gone():
-    for path in ("/batches", "/review-tasks", "/job-history", "/audit-log"):
+    for path in ("/jobs", "/review-tasks", "/job-history", "/audit-log"):
         assert client.get(path).status_code == 404
 
 
@@ -27,7 +27,7 @@ def test_health_stays_at_the_root():
 
 
 def test_not_found_uses_the_contract_error_format():
-    response = client.get("/api/v1/batches/BATCH-NOPE")
+    response = client.get("/api/v1/jobs/JOB-NOPE")
     body = response.json()
     assert response.status_code == 404
     assert "detail" not in body
@@ -37,7 +37,7 @@ def test_not_found_uses_the_contract_error_format():
 
 def test_validation_error_has_field_details_and_never_echoes_input():
     response = client.post(
-        "/api/v1/batches", json={"name": "T", "priority": "high", "document_ids": []}
+        "/api/v1/jobs", json={"name": "T", "priority": "high", "document_ids": []}
     )
     error = response.json()["error"]
     assert response.status_code == 422
@@ -47,9 +47,9 @@ def test_validation_error_has_field_details_and_never_echoes_input():
 
 
 def test_conflict_has_a_stable_code():
-    batch_id = _create()
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    response = client.post(f"/api/v1/batches/{batch_id}/process")
+    job_id = _create()
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    response = client.post(f"/api/v1/jobs/{job_id}/process")
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "JOB_ALREADY_STARTED"
 
@@ -66,9 +66,9 @@ def test_unknown_route_and_wrong_method_use_the_contract_format():
 
 def test_every_error_body_contains_only_documented_keys():
     responses = [
-        client.get("/api/v1/batches/BATCH-NOPE"),
-        client.post("/api/v1/batches/BATCH-NOPE/process"),
-        client.post("/api/v1/batches", json={}),
+        client.get("/api/v1/jobs/JOB-NOPE"),
+        client.post("/api/v1/jobs/JOB-NOPE/process"),
+        client.post("/api/v1/jobs", json={}),
         client.delete("/api/v1/audit-log"),
     ]
     for response in responses:

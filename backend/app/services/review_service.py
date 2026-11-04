@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.integrations.auth_service import CurrentUser
-from app.repositories import batch_repository
+from app.repositories import job_repository
 from app.repositories import review_repository as repo
 from app.schemas.audit import AuditAction
 from app.schemas.data_structure import FieldDefinition
@@ -82,7 +82,7 @@ def _definitions(result: dict) -> list[FieldDefinition]:
 def _task_view(result: dict) -> dict:
     view = {
         **result,
-        "task_id": result["item_id"],
+        "result_id": result["result_id"],
         "status": _STATUS_BY_REVIEW[result["review_status"]],
     }
     if result["review_status"] == "approved":
@@ -91,10 +91,10 @@ def _task_view(result: dict) -> dict:
     return view
 
 
-def _load_task(task_id: str) -> dict:
-    result = batch_repository.find_item(task_id)
+def _load_task(result_id: str) -> dict:
+    result = job_repository.find_item(result_id)
     if result is None or result.get("review_status") not in _STATUS_BY_REVIEW:
-        raise TaskNotFoundError(task_id)
+        raise TaskNotFoundError(result_id)
     return result
 
 
@@ -103,8 +103,8 @@ def list_queue(status: ReviewStatus | None) -> list[ReviewTaskResponse]:
     return [ReviewTaskResponse(**_task_view(r)) for r in repo.list_tasks(states)]
 
 
-def get_task_detail(task_id: str) -> ReviewTaskDetail:
-    result = _load_task(task_id)
+def get_task_detail(result_id: str) -> ReviewTaskDetail:
+    result = _load_task(result_id)
     field_values = result["field_values"]
     corrections = result.get("corrections", {})
 
@@ -138,11 +138,11 @@ def get_task_detail(task_id: str) -> ReviewTaskDetail:
 
 
 def apply_corrections(
-    task_id: str, request: CorrectionRequest, user: CurrentUser
+    result_id: str, request: CorrectionRequest, user: CurrentUser
 ) -> ReviewTaskDetail:
-    result = _load_task(task_id)
+    result = _load_task(result_id)
     if result["review_status"] != "pending_review":
-        raise TaskNotPendingError(task_id)
+        raise TaskNotPendingError(result_id)
 
     known = {d.field_id for d in _definitions(result)}
     unknown = [c.field_id for c in request.corrections if c.field_id not in known]
@@ -166,23 +166,23 @@ def apply_corrections(
     for c in request.corrections:
         merged[c.field_id] = {"value": c.value, "corrected_by": user.user_id, "corrected_at": now}
 
-    if not repo.save_corrections(task_id, merged):
-        raise TaskNotPendingError(task_id)  # it was approved in the meantime
+    if not repo.save_corrections(result_id, merged):
+        raise TaskNotPendingError(result_id)  # it was approved in the meantime
     audit_service.record(
         user.user_id,
         AuditAction.fields_corrected,
         "review_task",
-        task_id,
-        result["batch_id"],
+        result_id,
+        result["job_id"],
         {"document_id": result["document_id"], "changes": changes},
     )
-    return get_task_detail(task_id)
+    return get_task_detail(result_id)
 
 
-def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
-    result = _load_task(task_id)
+def finalize_task(result_id: str, user: CurrentUser) -> ReviewTaskDetail:
+    result = _load_task(result_id)
     if result["review_status"] != "pending_review":
-        raise TaskNotPendingError(task_id)
+        raise TaskNotPendingError(result_id)
 
     definitions = _definitions(result)
     final_fields = extraction_rules.build_final_fields(
@@ -198,17 +198,17 @@ def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
         raise MissingRequiredFieldsError(unresolved)
 
     now = datetime.now(timezone.utc)
-    if not repo.approve_task(task_id, user.user_id, now, final_fields):
-        raise TaskNotPendingError(task_id)  # someone else approved it first
+    if not repo.approve_task(result_id, user.user_id, now, final_fields):
+        raise TaskNotPendingError(result_id)  # someone else approved it first
     audit_service.record(
         user.user_id,
-        AuditAction.task_approved,
+        AuditAction.result_approved,
         "review_task",
-        task_id,
-        result["batch_id"],
+        result_id,
+        result["job_id"],
         {
             "document_id": result["document_id"],
             "corrected_fields": [f["field_id"] for f in final_fields if f["status"] == "corrected"],
         },
     )
-    return get_task_detail(task_id)
+    return get_task_detail(result_id)

@@ -17,37 +17,37 @@ client = TestClient(app)
 
 def _create(ids):
     body = {"name": "T", "priority": "high", "document_ids": ids}
-    return client.post("/api/v1/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/jobs", json=body).json()["job_id"]
 
 
 def test_task_is_registered_with_safe_settings():
-    assert "batches.process" in celery_app.tasks
+    assert "jobs.process" in celery_app.tasks
     assert celery_app.conf.task_acks_late is True
     assert celery_app.conf.task_serializer == "json"
 
 
-def test_queue_outage_returns_503_and_leaves_batch_pending(monkeypatch):
-    batch_id = _create(["DOC-001"])
+def test_queue_outage_returns_503_and_leaves_job_pending(monkeypatch):
+    job_id = _create(["DOC-001"])
 
-    def broken_queue(failed_batch_id, priority):
-        raise QueueUnavailableError(failed_batch_id)
+    def broken_queue(failed_job_id, priority):
+        raise QueueUnavailableError(failed_job_id)
 
     with monkeypatch.context() as patch:
-        patch.setattr("app.api.batches.enqueue_batch_processing", broken_queue)
-        assert client.post(f"/api/v1/batches/{batch_id}/process").status_code == 503
+        patch.setattr("app.api.jobs.enqueue_job_processing", broken_queue)
+        assert client.post(f"/api/v1/jobs/{job_id}/process").status_code == 503
 
-    assert client.get(f"/api/v1/batches/{batch_id}").json()["status"] == "pending"
-    started = client.get("/api/v1/audit-log", params={"action": "batch.processing_started"}).json()
+    assert client.get(f"/api/v1/jobs/{job_id}").json()["status"] == "pending"
+    started = client.get("/api/v1/audit-log", params={"action": "job.processing_started"}).json()
     assert started["total"] == 0  # nothing happened, so nothing is audited
 
-    # Once the queue is back, the same batch can be started normally.
-    assert client.post(f"/api/v1/batches/{batch_id}/process").status_code == 202
-    assert client.get(f"/api/v1/batches/{batch_id}").json()["status"] == "completed"
+    # Once the queue is back, the same job can be started normally.
+    assert client.post(f"/api/v1/jobs/{job_id}/process").status_code == 202
+    assert client.get(f"/api/v1/jobs/{job_id}").json()["status"] == "completed"
 
 
 def test_resumed_processing_skips_finished_items():
-    batch_id = _create(["DOC-001", "DOC-002", "DOC-004"])
-    job_oid = ObjectId(batch_id)
+    job_id = _create(["DOC-001", "DOC-002", "DOC-004"])
+    job_oid = ObjectId(job_id)
     db = get_db()
     # Simulate a worker that stopped half way: DOC-001 finished, DOC-002 was mid-processing.
     db.extraction_jobs.update_one({"_id": job_oid}, {"$set": {"status": "processing"}})
@@ -59,9 +59,9 @@ def test_resumed_processing_skips_finished_items():
         {"job_id": job_oid, "document_id": "DOC-002"}, {"$set": {"status": "processing"}}
     )
 
-    processing_service.process_batch(batch_id, MockExtractionService(), MockOcrService())
+    processing_service.process_job(job_id, MockExtractionService(), MockOcrService())
 
-    detail = client.get(f"/api/v1/batches/{batch_id}").json()
+    detail = client.get(f"/api/v1/jobs/{job_id}").json()
     items = {i["document_id"]: i for i in detail["items"]}
     assert detail["status"] == "completed"
     assert items["DOC-001"]["reliability_score"] == 0.123  # untouched: not reprocessed
@@ -69,12 +69,12 @@ def test_resumed_processing_skips_finished_items():
     assert items["DOC-004"]["status"] == "completed"
 
 
-def test_running_a_finished_batch_again_changes_nothing():
-    batch_id = _create(["DOC-003"])
-    client.post(f"/api/v1/batches/{batch_id}/process")
-    before = client.get(f"/api/v1/batches/{batch_id}").json()["items"]
+def test_running_a_finished_job_again_changes_nothing():
+    job_id = _create(["DOC-003"])
+    client.post(f"/api/v1/jobs/{job_id}/process")
+    before = client.get(f"/api/v1/jobs/{job_id}").json()["items"]
 
-    processing_service.process_batch(batch_id, MockExtractionService(), MockOcrService())
+    processing_service.process_job(job_id, MockExtractionService(), MockOcrService())
 
-    assert client.get(f"/api/v1/batches/{batch_id}").json()["items"] == before
+    assert client.get(f"/api/v1/jobs/{job_id}").json()["items"] == before
     assert get_db().extraction_results.count_documents({"review_status": "pending_review"}) == 1

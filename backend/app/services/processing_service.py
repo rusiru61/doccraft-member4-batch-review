@@ -7,7 +7,7 @@ from app.integrations.data_structure_provider import (
 )
 from app.integrations.extraction_service import ExtractionError, ExtractionService
 from app.integrations.ocr_service import OcrService
-from app.repositories import batch_repository as repo
+from app.repositories import job_repository as repo
 from app.schemas.audit import AuditAction
 from app.services import audit_service, extraction_rules, review_service, routing_service
 from app.services.reliability_service import calculate_reliability_score
@@ -15,11 +15,11 @@ from app.services.reliability_service import calculate_reliability_score
 logger = logging.getLogger(__name__)
 
 
-class BatchNotFoundError(Exception):
+class JobNotFoundError(Exception):
     pass
 
 
-class BatchNotPendingError(Exception):
+class JobNotPendingError(Exception):
     pass
 
 
@@ -33,50 +33,50 @@ def order_items(items: list[dict]) -> list[dict]:
 
 
 def start_processing(
-    batch_id: str, user: CurrentUser, enqueue: Callable[[str, str], None]
+    job_id: str, user: CurrentUser, enqueue: Callable[[str, str], None]
 ) -> None:
-    batch = repo.find_batch(batch_id)
-    if batch is None:
-        raise BatchNotFoundError(batch_id)
-    if not repo.try_mark_batch_processing(batch_id):
-        raise BatchNotPendingError(batch_id)
+    job = repo.find_job(job_id)
+    if job is None:
+        raise JobNotFoundError(job_id)
+    if not repo.try_mark_job_processing(job_id):
+        raise JobNotPendingError(job_id)
     try:
-        enqueue(batch_id, batch["priority"])
+        enqueue(job_id, job["priority"])
     except QueueUnavailableError:
-        repo.revert_batch_to_pending(batch_id)  # nothing was queued, so undo the mark
+        repo.revert_job_to_pending(job_id)  # nothing was queued, so undo the mark
         raise
     # The audit entry is written only after the job is really queued.
     audit_service.record(
-        user.user_id, AuditAction.processing_started, "batch", batch_id, batch_id
+        user.user_id, AuditAction.processing_started, "job", job_id, job_id
     )
 
 
-def _mark_failed(item_id: str, message: str) -> None:
-    repo.update_item(item_id, {"status": "failed", "error_message": message})
+def _mark_failed(result_id: str, message: str) -> None:
+    repo.update_item(result_id, {"status": "failed", "error_message": message})
 
 
-def process_batch(
-    batch_id: str,
+def process_job(
+    job_id: str,
     extractor: ExtractionService,
     ocr_service: OcrService,
     structure_provider: DataStructureProvider | None = None,
 ) -> None:
-    repo.mark_batch_started(batch_id)
+    repo.mark_job_started(job_id)
     # Snapshot the field definitions once per run, so review never depends on a live lookup.
     definitions = (structure_provider or get_data_structure_provider()).get_field_definitions()
     definition_snapshot = [d.model_dump() for d in definitions]
 
-    items = order_items(repo.list_items(batch_id))
+    items = order_items(repo.list_items(job_id))
     remaining = sum(1 for i in items if i["status"] in ("pending", "processing"))
-    logger.info("Batch %s: processing %d of %d items", batch_id, remaining, len(items))
+    logger.info("Job %s: processing %d of %d items", job_id, remaining, len(items))
 
     for position, item in enumerate(items, start=1):
         if item["status"] in ("completed", "failed"):
             continue  # finished before a restart or redelivery, so never redo it
-        item_id = item["item_id"]
+        result_id = item["result_id"]
         routing = routing_service.route_language(item["detected_language"])
         repo.update_item(
-            item_id,
+            result_id,
             {
                 "status": "processing",
                 "processing_order": position,
@@ -96,7 +96,7 @@ def process_batch(
             )
             # ONE write: the extraction and its review decision are saved together or not at all.
             repo.update_item(
-                item_id,
+                result_id,
                 {
                     "status": "completed",
                     "field_values": extracted["field_values"],
@@ -110,11 +110,11 @@ def process_batch(
                 },
             )
         except ExtractionError as exc:  # expected kind of failure
-            logger.warning("Batch %s: %s failed: %s", batch_id, item["document_id"], exc)
-            _mark_failed(item_id, str(exc))
+            logger.warning("Job %s: %s failed: %s", job_id, item["document_id"], exc)
+            _mark_failed(result_id, str(exc))
         except Exception:  # deliberate: one document must never stop the others
-            logger.exception("Batch %s: unexpected error on %s", batch_id, item["document_id"])
-            _mark_failed(item_id, "Unexpected processing error")
+            logger.exception("Job %s: unexpected error on %s", job_id, item["document_id"])
+            _mark_failed(result_id, "Unexpected processing error")
 
-    repo.set_batch_status(batch_id, "completed")
-    logger.info("Batch %s: finished", batch_id)
+    repo.set_job_status(job_id, "completed")
+    logger.info("Job %s: finished", job_id)
