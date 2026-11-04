@@ -21,18 +21,19 @@ def get_db() -> Database:
 def ensure_indexes() -> None:
     """Create every index the app relies on. Safe to run repeatedly."""
     db = get_db()
-    db.batches.create_index("batch_id", unique=True)
-    db.batches.create_index([("created_at", DESCENDING), ("batch_id", ASCENDING)])
+    db.extraction_jobs.create_index([("created_at", DESCENDING), ("_id", ASCENDING)])
 
-    db.job_items.create_index("item_id", unique=True)
-    db.job_items.create_index("batch_id")
-    db.job_items.create_index([("review_status", ASCENDING), ("finalized_at", ASCENDING)])
-
-    db.review_tasks.create_index("task_id", unique=True)
-    db.review_tasks.create_index(
-        [("status", ASCENDING), ("reliability_score", ASCENDING), ("created_at", ASCENDING)]
+    # One result per document per job, enforced by the database itself.
+    db.extraction_results.create_index(
+        [("job_id", ASCENDING), ("document_id", ASCENDING)], unique=True
     )
+    # The review queue: filter by review status, already sorted by score.
+    db.extraction_results.create_index(
+        [("review_status", ASCENDING), ("reliability_score", ASCENDING), ("created_at", ASCENDING)]
+    )
+    # The finalized-results handoff.
+    db.extraction_results.create_index([("review_status", ASCENDING), ("finalized_at", ASCENDING)])
 
-    db.audit_log.create_index("audit_id", unique=True)
-    db.audit_log.create_index([("timestamp", DESCENDING)])
-    db.audit_log.create_index("batch_id")
+    db.audit_logs.create_index("audit_id", unique=True)
+    db.audit_logs.create_index([("timestamp", DESCENDING)])
+    db.audit_logs.create_index("batch_id")
