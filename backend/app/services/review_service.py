@@ -12,6 +12,10 @@ from app.schemas.review import (
 )
 from app.services import audit_service, extraction_rules
 
+# A review task is a view over a result: stored review_status <-> API status.
+_STATUS_BY_REVIEW = {"pending_review": "pending", "approved": "approved"}
+_REVIEW_BY_STATUS = {status: review for review, status in _STATUS_BY_REVIEW.items()}
+
 
 class TaskNotFoundError(Exception):
     pass
@@ -36,17 +40,17 @@ def needs_review(score: float) -> bool:
     return score < settings.reliability_threshold
 
 
-def _definitions(item: dict) -> list[FieldDefinition]:
-    return [FieldDefinition(**d) for d in item["field_definitions"]]
-
-
-def flag_if_needed(
-    item: dict,
+def decide_review(
     result: ExtractionResult,
     definitions: list[FieldDefinition],
     score: float,
     force_review: bool = False,
-) -> bool:
+) -> dict:
+    """What to store on a result right after extraction. Pure: no database access.
+
+    The decision is saved in the same write as the extraction, so a result can
+    never exist without one.
+    """
     field_values = result.model_dump()["field_values"]
     reasons = []
     if needs_review(score):
@@ -55,42 +59,60 @@ def flag_if_needed(
         reasons.append("required_field_problem")
     if force_review:
         reasons.append("unknown_language")
-    if not reasons:
-        return False
 
-    repo.upsert_task(
-        {
-            "task_id": f"REV-{item['item_id']}",
-            "batch_id": item["batch_id"],
-            "item_id": item["item_id"],
-            "document_id": item["document_id"],
-            "filename": item["filename"],
-            "reliability_score": score,
-            "flagged_fields": extraction_rules.find_flagged_fields(field_values),
-            "review_reasons": reasons,
-            "status": ReviewStatus.pending.value,
-            "created_at": datetime.now(timezone.utc),
-        }
-    )
-    return True
+    decision = {
+        "review_reasons": reasons,
+        "flagged_fields": extraction_rules.find_flagged_fields(field_values),
+    }
+    if reasons:
+        return {**decision, "review_status": "pending_review"}
+    return {
+        **decision,
+        "review_status": "not_required",
+        "final_fields": extraction_rules.build_final_fields(field_values, {}, definitions),
+        "finalized_by": "system",
+        "finalized_at": datetime.now(timezone.utc),
+    }
+
+
+def _definitions(result: dict) -> list[FieldDefinition]:
+    return [FieldDefinition(**d) for d in result["field_definitions"]]
+
+
+def _task_view(result: dict) -> dict:
+    view = {
+        **result,
+        "task_id": result["item_id"],
+        "status": _STATUS_BY_REVIEW[result["review_status"]],
+    }
+    if result["review_status"] == "approved":
+        view["approved_by"] = result.get("finalized_by")
+        view["approved_at"] = result.get("finalized_at")
+    return view
+
+
+def _load_task(task_id: str) -> dict:
+    result = batch_repository.find_item(task_id)
+    if result is None or result.get("review_status") not in _STATUS_BY_REVIEW:
+        raise TaskNotFoundError(task_id)
+    return result
 
 
 def list_queue(status: ReviewStatus | None) -> list[ReviewTaskResponse]:
-    value = status.value if status else None
-    return [ReviewTaskResponse(**t) for t in repo.list_tasks(value)]
+    states = list(_STATUS_BY_REVIEW) if status is None else [_REVIEW_BY_STATUS[status.value]]
+    return [ReviewTaskResponse(**_task_view(r)) for r in repo.list_tasks(states)]
 
 
 def get_task_detail(task_id: str) -> ReviewTaskDetail:
-    task = repo.find_task(task_id)
-    if task is None:
-        raise TaskNotFoundError(task_id)
-    item = batch_repository.find_item(task["item_id"])
-    field_values = item["extraction"]["field_values"]
-    corrections = task.get("corrections", {})
+    result = _load_task(task_id)
+    field_values = result["field_values"]
+    corrections = result.get("corrections", {})
 
     fields = []
-    for d in sorted(_definitions(item), key=lambda d: d.order):
-        original = field_values.get(d.field_id) or {"value": None, "status": "missing", "source_text": None}
+    for d in sorted(_definitions(result), key=lambda d: d.order):
+        original = field_values.get(d.field_id) or {
+            "value": None, "status": "missing", "source_text": None,
+        }
         corrected = d.field_id in corrections
         fields.append(
             ReviewFieldView(
@@ -102,31 +124,33 @@ def get_task_detail(task_id: str) -> ReviewTaskDetail:
                 current_value=corrections[d.field_id]["value"] if corrected else original["value"],
                 status="corrected" if corrected else original["status"],
                 source_text=original["source_text"],
-                flagged=d.field_id in task["flagged_fields"],
+                flagged=d.field_id in result["flagged_fields"],
             )
         )
+
     return ReviewTaskDetail(
-        **task, fields=fields, validation_errors=item["extraction"]["validation_errors"]
+        **{
+            **_task_view(result),
+            "fields": fields,
+            "validation_errors": result["validation_errors"],
+        }
     )
 
 
 def apply_corrections(
     task_id: str, request: CorrectionRequest, user: CurrentUser
 ) -> ReviewTaskDetail:
-    task = repo.find_task(task_id)
-    if task is None:
-        raise TaskNotFoundError(task_id)
-    if task["status"] != ReviewStatus.pending.value:
+    result = _load_task(task_id)
+    if result["review_status"] != "pending_review":
         raise TaskNotPendingError(task_id)
 
-    item = batch_repository.find_item(task["item_id"])
-    known = {d.field_id for d in _definitions(item)}
+    known = {d.field_id for d in _definitions(result)}
     unknown = [c.field_id for c in request.corrections if c.field_id not in known]
     if unknown:
         raise UnknownFieldError(unknown)
 
-    field_values = item["extraction"]["field_values"]
-    previous = task.get("corrections", {})
+    field_values = result["field_values"]
+    previous = result.get("corrections", {})
     changes = {
         c.field_id: {
             "from": previous[c.field_id]["value"]
@@ -143,44 +167,26 @@ def apply_corrections(
         merged[c.field_id] = {"value": c.value, "corrected_by": user.user_id, "corrected_at": now}
 
     if not repo.save_corrections(task_id, merged):
-        raise TaskNotPendingError(task_id)  # the task was completed in the meantime
+        raise TaskNotPendingError(task_id)  # it was approved in the meantime
     audit_service.record(
         user.user_id,
         AuditAction.fields_corrected,
         "review_task",
         task_id,
-        task["batch_id"],
-        {"document_id": task["document_id"], "changes": changes},
+        result["batch_id"],
+        {"document_id": result["document_id"], "changes": changes},
     )
     return get_task_detail(task_id)
 
 
-def auto_finalize(item: dict, result: ExtractionResult, definitions: list[FieldDefinition]) -> None:
-    """High-scoring documents with no problems need no review, so the system finalizes them."""
-    batch_repository.update_item(
-        item["item_id"],
-        {
-            "review_status": "not_required",
-            "final_fields": extraction_rules.build_final_fields(
-                result.model_dump()["field_values"], {}, definitions
-            ),
-            "finalized_by": "system",
-            "finalized_at": datetime.now(timezone.utc),
-        },
-    )
-
-
 def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
-    task = repo.find_task(task_id)
-    if task is None:
-        raise TaskNotFoundError(task_id)
-    if task["status"] != ReviewStatus.pending.value:
+    result = _load_task(task_id)
+    if result["review_status"] != "pending_review":
         raise TaskNotPendingError(task_id)
 
-    item = batch_repository.find_item(task["item_id"])
-    definitions = _definitions(item)
+    definitions = _definitions(result)
     final_fields = extraction_rules.build_final_fields(
-        item["extraction"]["field_values"], task.get("corrections", {}), definitions
+        result["field_values"], result.get("corrections", {}), definitions
     )
     required = {d.field_id for d in definitions if d.required}
     unresolved = [
@@ -192,26 +198,16 @@ def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
         raise MissingRequiredFieldsError(unresolved)
 
     now = datetime.now(timezone.utc)
-    if not repo.approve_task(task_id, user.user_id, now):
+    if not repo.approve_task(task_id, user.user_id, now, final_fields):
         raise TaskNotPendingError(task_id)  # someone else approved it first
-
-    batch_repository.update_item(
-        item["item_id"],
-        {
-            "review_status": "approved",
-            "final_fields": final_fields,
-            "finalized_by": user.user_id,
-            "finalized_at": now,
-        },
-    )
     audit_service.record(
         user.user_id,
         AuditAction.task_approved,
         "review_task",
         task_id,
-        task["batch_id"],
+        result["batch_id"],
         {
-            "document_id": task["document_id"],
+            "document_id": result["document_id"],
             "corrected_fields": [f["field_id"] for f in final_fields if f["status"] == "corrected"],
         },
     )

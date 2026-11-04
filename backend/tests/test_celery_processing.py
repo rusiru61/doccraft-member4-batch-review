@@ -9,6 +9,7 @@ from app.main import app
 from app.services import processing_service
 from app.services.processing_service import QueueUnavailableError
 from app.tasks import processing_tasks  # noqa: F401  (importing registers the task)
+from bson import ObjectId
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
@@ -46,15 +47,16 @@ def test_queue_outage_returns_503_and_leaves_batch_pending(monkeypatch):
 
 def test_resumed_processing_skips_finished_items():
     batch_id = _create(["DOC-001", "DOC-002", "DOC-004"])
+    job_oid = ObjectId(batch_id)
     db = get_db()
     # Simulate a worker that stopped half way: DOC-001 finished, DOC-002 was mid-processing.
-    db.batches.update_one({"batch_id": batch_id}, {"$set": {"status": "processing"}})
-    db.job_items.update_one(
-        {"batch_id": batch_id, "document_id": "DOC-001"},
+    db.extraction_jobs.update_one({"_id": job_oid}, {"$set": {"status": "processing"}})
+    db.extraction_results.update_one(
+        {"job_id": job_oid, "document_id": "DOC-001"},
         {"$set": {"status": "completed", "reliability_score": 0.123}},
     )
-    db.job_items.update_one(
-        {"batch_id": batch_id, "document_id": "DOC-002"}, {"$set": {"status": "processing"}}
+    db.extraction_results.update_one(
+        {"job_id": job_oid, "document_id": "DOC-002"}, {"$set": {"status": "processing"}}
     )
 
     processing_service.process_batch(batch_id, MockExtractionService(), MockOcrService())
@@ -75,4 +77,4 @@ def test_running_a_finished_batch_again_changes_nothing():
     processing_service.process_batch(batch_id, MockExtractionService(), MockOcrService())
 
     assert client.get(f"/api/v1/batches/{batch_id}").json()["items"] == before
-    assert get_db().review_tasks.count_documents({}) == 1
+    assert get_db().extraction_results.count_documents({"review_status": "pending_review"}) == 1

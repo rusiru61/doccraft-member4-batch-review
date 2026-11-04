@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import get_db
 from app.main import app
+from bson import ObjectId
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
@@ -44,8 +45,9 @@ def test_processed_batch_shows_counts_and_duration():
 
 def test_history_is_newest_first():
     older = _create(name="older")
-    get_db().batches.update_one(
-        {"batch_id": older}, {"$set": {"created_at": datetime(2020, 1, 1, tzinfo=timezone.utc)}}
+    get_db().extraction_jobs.update_one(
+        {"_id": ObjectId(older)},
+        {"$set": {"created_at": datetime(2020, 1, 1, tzinfo=timezone.utc)}},
     )
     newer = _create(name="newer")
     assert [e["batch_id"] for e in _history()["items"]] == [newer, older]

@@ -1,15 +1,14 @@
 from datetime import datetime, timezone
-from uuid import uuid4
-from app.integrations.auth_service import CurrentUser
-from app.schemas.audit import AuditAction
-from app.services import audit_service
 
+from app.integrations.auth_service import CurrentUser
 from app.integrations.document_provider import DocumentProvider
 from app.repositories import batch_repository as repo
+from app.schemas.audit import AuditAction
 from app.schemas.batch import (
     BatchCreate, BatchDetailResponse, BatchProgress, BatchResponse,
     BatchStatus, ItemStatus, JobItemResponse,
 )
+from app.services import audit_service
 
 
 class UnknownDocumentError(Exception):
@@ -45,9 +44,7 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider, user: Current
         raise UnknownDocumentError(missing)
 
     now = datetime.now(timezone.utc)
-    batch_id = f"BATCH-{uuid4().hex[:8].upper()}"
     batch = {
-        "batch_id": batch_id,
         "name": payload.name,
         "priority": payload.priority.value,
         "status": BatchStatus.pending.value,
@@ -58,8 +55,6 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider, user: Current
     }
     items = [
         {
-            "item_id": f"{batch_id}-{doc.document_id}",
-            "batch_id": batch_id,
             "document_id": doc.document_id,
             "filename": doc.filename,
             "page_count": doc.page_count,
@@ -72,7 +67,7 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider, user: Current
         }
         for doc in documents.values()
     ]
-    repo.insert_batch(batch, items)
+    batch_id = repo.insert_batch(batch, items)
     audit_service.record(
         user.user_id,
         AuditAction.batch_created,
@@ -81,7 +76,7 @@ def create_batch(payload: BatchCreate, provider: DocumentProvider, user: Current
         batch_id,
         {"name": payload.name, "priority": payload.priority.value, "document_count": len(items)},
     )
-    return _to_batch_response(batch)
+    return _to_batch_response({**batch, "batch_id": batch_id})
 
 
 def list_batches() -> list[BatchResponse]:
@@ -93,6 +88,7 @@ def list_batches() -> list[BatchResponse]:
         counts = {k: s.get(k, 0) for k in ("pending", "processing", "completed", "failed")}
         responses.append(BatchResponse(**batch, progress=build_progress(counts)))
     return responses
+
 
 def get_batch_detail(batch_id: str) -> BatchDetailResponse | None:
     batch = repo.find_batch(batch_id)

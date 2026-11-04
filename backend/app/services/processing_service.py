@@ -1,19 +1,16 @@
 import logging
+from typing import Callable
 
-from app.integrations.extraction_service import ExtractionError, ExtractionService
-from app.repositories import batch_repository as repo
-from app.integrations.ocr_service import OcrService
-from app.services import review_service
-from app.services.reliability_service import calculate_reliability_score
 from app.integrations.auth_service import CurrentUser
-from app.schemas.audit import AuditAction
-from app.services import audit_service
-from app.services import routing_service
 from app.integrations.data_structure_provider import (
     DataStructureProvider, get_data_structure_provider,
 )
-from app.services import extraction_rules
-from typing import Callable
+from app.integrations.extraction_service import ExtractionError, ExtractionService
+from app.integrations.ocr_service import OcrService
+from app.repositories import batch_repository as repo
+from app.schemas.audit import AuditAction
+from app.services import audit_service, extraction_rules, review_service, routing_service
+from app.services.reliability_service import calculate_reliability_score
 
 logger = logging.getLogger(__name__)
 
@@ -88,26 +85,30 @@ def process_batch(
         )
         try:
             result = extractor.extract(item["document_id"])
+            extracted = result.model_dump()
             ocr = ocr_service.get_ocr_confidence(item["document_id"], item.get("is_scanned", False))
-            problems = extraction_rules.find_required_problems(
-                result.model_dump()["field_values"], definitions
-            )
+            problems = extraction_rules.find_required_problems(extracted["field_values"], definitions)
             score = calculate_reliability_score(
                 ocr, result.ai_confidence, validation_passed=not problems
             )
-            repo.update_item(item_id, {
-                "status": "completed",
-                "extraction": result.model_dump(),
-                "field_definitions": definition_snapshot,
-                "ocr_confidence": ocr,
-                "reliability_score": score,
-            })
-            if review_service.flag_if_needed(
-                item, result, definitions, score, force_review=routing.requires_review
-            ):
-                repo.update_item(item_id, {"review_status": "pending_review"})
-            else:
-                review_service.auto_finalize(item, result, definitions)
+            decision = review_service.decide_review(
+                result, definitions, score, force_review=routing.requires_review
+            )
+            # ONE write: the extraction and its review decision are saved together or not at all.
+            repo.update_item(
+                item_id,
+                {
+                    "status": "completed",
+                    "field_values": extracted["field_values"],
+                    "ai_confidence": extracted["ai_confidence"],
+                    "validation_errors": extracted["validation_errors"],
+                    "extracted_at": extracted["extracted_at"],
+                    "field_definitions": definition_snapshot,
+                    "ocr_confidence": ocr,
+                    "reliability_score": score,
+                    **decision,
+                },
+            )
         except ExtractionError as exc:  # expected kind of failure
             logger.warning("Batch %s: %s failed: %s", batch_id, item["document_id"], exc)
             _mark_failed(item_id, str(exc))

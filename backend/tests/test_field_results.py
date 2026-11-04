@@ -9,6 +9,7 @@ from app.main import app
 from app.schemas.data_structure import FieldDefinition
 from app.schemas.extraction import FieldResult
 from app.services import extraction_rules, processing_service
+from bson import ObjectId
 
 client = TestClient(app)
 
@@ -84,7 +85,7 @@ def test_field_definitions_are_snapshotted_on_each_item():
     body = {"name": "T", "priority": "high", "document_ids": ["DOC-001"]}
     batch_id = client.post("/api/v1/batches", json=body).json()["batch_id"]
     client.post(f"/api/v1/batches/{batch_id}/process")
-    item = get_db().job_items.find_one({"batch_id": batch_id})
+    item = get_db().extraction_results.find_one({"job_id": ObjectId(batch_id)})
     assert [d["field_id"] for d in item["field_definitions"]] == [
         d.field_id for d in MockDataStructureProvider().get_field_definitions()
     ]

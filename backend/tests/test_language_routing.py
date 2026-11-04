@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.core.database import get_db
 from app.main import app
 from app.services.routing_service import route_language
+from bson import ObjectId
 
 client = TestClient(app)
 
@@ -24,8 +25,8 @@ def _items(batch_id):
 
 
 def _make_unknown(batch_id):
-    get_db().job_items.update_many(
-        {"batch_id": batch_id}, {"$set": {"detected_language": "unknown"}}
+    get_db().extraction_results.update_many(
+        {"job_id": ObjectId(batch_id)}, {"$set": {"detected_language": "unknown"}}
     )
 
 
