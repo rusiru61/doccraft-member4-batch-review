@@ -2,14 +2,14 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.schemas.batch import BatchStatus, Priority
+from app.schemas.job import JobStatus, Priority
 
 
 class JobHistoryEntry(BaseModel):
-    batch_id: str
+    job_id: str
     name: str
     priority: Priority
-    status: BatchStatus
+    status: JobStatus
     created_by: str | None
     created_at: datetime
     started_at: datetime | None

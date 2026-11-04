@@ -7,6 +7,6 @@ router = APIRouter(prefix="/finalized-results", tags=["results"])
 
 
 @router.get("", response_model=list[FinalizedResult])
-def list_finalized_results(batch_id: str | None = None):
+def list_finalized_results(job_id: str | None = None):
     """Gate G5: everything that is ready to hand to Member 5's export module."""
-    return results_service.list_finalized(batch_id)
+    return results_service.list_finalized(job_id)

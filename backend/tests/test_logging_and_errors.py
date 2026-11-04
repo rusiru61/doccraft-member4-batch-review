@@ -70,8 +70,8 @@ def test_database_outage_returns_503_with_request_id(monkeypatch):
     def database_down():
         raise ServerSelectionTimeoutError("mongo is down")
 
-    monkeypatch.setattr("app.repositories.batch_repository.list_batches", database_down)
-    response = client.get("/api/v1/batches")
+    monkeypatch.setattr("app.repositories.job_repository.list_jobs", database_down)
+    response = client.get("/api/v1/extraction-jobs")
     assert response.status_code == 503
     body = response.json()["error"]
     assert body["code"] == "DATABASE_UNAVAILABLE"

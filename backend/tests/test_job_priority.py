@@ -16,7 +16,7 @@ USER = CurrentUser(user_id="user_001", role="operator")
 
 def _create(priority="medium"):
     body = {"name": "T", "priority": priority, "document_ids": ["DOC-001"]}
-    return client.post("/api/v1/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 class _FakeTask:
@@ -44,22 +44,22 @@ def test_queue_names_sort_in_priority_order():  # US-04 AC1, AC2
 
 def test_enqueue_sends_the_job_to_the_matching_queue(monkeypatch):
     fake = _FakeTask()
-    monkeypatch.setattr(processing_tasks, "run_batch_processing", fake)
-    processing_tasks.enqueue_batch_processing("BATCH-1", "high")
-    assert fake.sent == [(["BATCH-1"], "p1_high")]
+    monkeypatch.setattr(processing_tasks, "run_job_processing", fake)
+    processing_tasks.enqueue_job_processing("JOB-1", "high")
+    assert fake.sent == [(["JOB-1"], "p1_high")]
 
 
-def test_start_processing_passes_the_batch_priority_to_the_queue():
-    batch_id = _create("low")
+def test_start_processing_passes_the_job_priority_to_the_queue():
+    job_id = _create("low")
     seen = []
-    processing_service.start_processing(batch_id, USER, lambda b, p: seen.append((b, p)))
-    assert seen == [(batch_id, "low")]
+    processing_service.start_processing(job_id, USER, lambda b, p: seen.append((b, p)))
+    assert seen == [(job_id, "low")]
 
 
 def test_started_at_is_set_by_the_worker_not_when_queued():
-    batch_id = _create("high")
-    processing_service.start_processing(batch_id, USER, lambda b, p: None)  # queued, no worker yet
-    assert client.get(f"/api/v1/batches/{batch_id}").json()["started_at"] is None
+    job_id = _create("high")
+    processing_service.start_processing(job_id, USER, lambda b, p: None)  # queued, no worker yet
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["started_at"] is None
 
-    processing_service.process_batch(batch_id, MockExtractionService(), MockOcrService())
-    assert client.get(f"/api/v1/batches/{batch_id}").json()["started_at"] is not None
+    processing_service.process_job(job_id, MockExtractionService(), MockOcrService())
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["started_at"] is not None

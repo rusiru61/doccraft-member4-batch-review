@@ -2,26 +2,22 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.integrations.auth_service import CurrentUser
-from app.repositories import batch_repository
+from app.repositories import job_repository
 from app.repositories import review_repository as repo
 from app.schemas.audit import AuditAction
 from app.schemas.data_structure import FieldDefinition
 from app.schemas.extraction import ExtractionResult
 from app.schemas.review import (
-    CorrectionRequest, ReviewFieldView, ReviewStatus, ReviewTaskDetail, ReviewTaskResponse,
+    CorrectionRequest, ResultDetail, ResultSummary, ReviewFieldView, ReviewStatus,
 )
 from app.services import audit_service, extraction_rules
 
-# A review task is a view over a result: stored review_status <-> API status.
-_STATUS_BY_REVIEW = {"pending_review": "pending", "approved": "approved"}
-_REVIEW_BY_STATUS = {status: review for review, status in _STATUS_BY_REVIEW.items()}
 
-
-class TaskNotFoundError(Exception):
+class ResultNotFoundError(Exception):
     pass
 
 
-class TaskNotPendingError(Exception):
+class ReviewNotPendingError(Exception):
     pass
 
 
@@ -79,32 +75,20 @@ def _definitions(result: dict) -> list[FieldDefinition]:
     return [FieldDefinition(**d) for d in result["field_definitions"]]
 
 
-def _task_view(result: dict) -> dict:
-    view = {
-        **result,
-        "task_id": result["item_id"],
-        "status": _STATUS_BY_REVIEW[result["review_status"]],
-    }
-    if result["review_status"] == "approved":
-        view["approved_by"] = result.get("finalized_by")
-        view["approved_at"] = result.get("finalized_at")
-    return view
-
-
-def _load_task(task_id: str) -> dict:
-    result = batch_repository.find_item(task_id)
-    if result is None or result.get("review_status") not in _STATUS_BY_REVIEW:
-        raise TaskNotFoundError(task_id)
+def _load_result(result_id: str) -> dict:
+    """Only a completed extraction has data to review. Failed or unknown results are 'not found'."""
+    result = job_repository.find_item(result_id)
+    if result is None or result.get("status") != "completed":
+        raise ResultNotFoundError(result_id)
     return result
 
 
-def list_queue(status: ReviewStatus | None) -> list[ReviewTaskResponse]:
-    states = list(_STATUS_BY_REVIEW) if status is None else [_REVIEW_BY_STATUS[status.value]]
-    return [ReviewTaskResponse(**_task_view(r)) for r in repo.list_tasks(states)]
+def list_results(review_status: ReviewStatus, job_id: str | None) -> list[ResultSummary]:
+    return [ResultSummary(**r) for r in repo.list_results(review_status.value, job_id)]
 
 
-def get_task_detail(task_id: str) -> ReviewTaskDetail:
-    result = _load_task(task_id)
+def get_result_detail(result_id: str) -> ResultDetail:
+    result = _load_result(result_id)
     field_values = result["field_values"]
     corrections = result.get("corrections", {})
 
@@ -128,21 +112,17 @@ def get_task_detail(task_id: str) -> ReviewTaskDetail:
             )
         )
 
-    return ReviewTaskDetail(
-        **{
-            **_task_view(result),
-            "fields": fields,
-            "validation_errors": result["validation_errors"],
-        }
+    return ResultDetail(
+        **{**result, "fields": fields, "validation_errors": result["validation_errors"]}
     )
 
 
 def apply_corrections(
-    task_id: str, request: CorrectionRequest, user: CurrentUser
-) -> ReviewTaskDetail:
-    result = _load_task(task_id)
+    result_id: str, request: CorrectionRequest, user: CurrentUser
+) -> ResultDetail:
+    result = _load_result(result_id)
     if result["review_status"] != "pending_review":
-        raise TaskNotPendingError(task_id)
+        raise ReviewNotPendingError(result_id)
 
     known = {d.field_id for d in _definitions(result)}
     unknown = [c.field_id for c in request.corrections if c.field_id not in known]
@@ -166,23 +146,23 @@ def apply_corrections(
     for c in request.corrections:
         merged[c.field_id] = {"value": c.value, "corrected_by": user.user_id, "corrected_at": now}
 
-    if not repo.save_corrections(task_id, merged):
-        raise TaskNotPendingError(task_id)  # it was approved in the meantime
+    if not repo.save_corrections(result_id, merged):
+        raise ReviewNotPendingError(result_id)  # it was approved in the meantime
     audit_service.record(
         user.user_id,
         AuditAction.fields_corrected,
-        "review_task",
-        task_id,
-        result["batch_id"],
+        "extraction_result",
+        result_id,
+        result["job_id"],
         {"document_id": result["document_id"], "changes": changes},
     )
-    return get_task_detail(task_id)
+    return get_result_detail(result_id)
 
 
-def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
-    result = _load_task(task_id)
+def approve_result(result_id: str, user: CurrentUser) -> ResultDetail:
+    result = _load_result(result_id)
     if result["review_status"] != "pending_review":
-        raise TaskNotPendingError(task_id)
+        raise ReviewNotPendingError(result_id)
 
     definitions = _definitions(result)
     final_fields = extraction_rules.build_final_fields(
@@ -198,17 +178,17 @@ def finalize_task(task_id: str, user: CurrentUser) -> ReviewTaskDetail:
         raise MissingRequiredFieldsError(unresolved)
 
     now = datetime.now(timezone.utc)
-    if not repo.approve_task(task_id, user.user_id, now, final_fields):
-        raise TaskNotPendingError(task_id)  # someone else approved it first
+    if not repo.approve_result(result_id, user.user_id, now, final_fields):
+        raise ReviewNotPendingError(result_id)  # someone else approved it first
     audit_service.record(
         user.user_id,
-        AuditAction.task_approved,
-        "review_task",
-        task_id,
-        result["batch_id"],
+        AuditAction.result_approved,
+        "extraction_result",
+        result_id,
+        result["job_id"],
         {
             "document_id": result["document_id"],
             "corrected_fields": [f["field_id"] for f in final_fields if f["status"] == "corrected"],
         },
     )
-    return get_task_detail(task_id)
+    return get_result_detail(result_id)

@@ -11,7 +11,7 @@ class Priority(str, Enum):
     low = "low"
 
 
-class BatchStatus(str, Enum):
+class JobStatus(str, Enum):
     pending = "pending"
     processing = "processing"
     completed = "completed"
@@ -24,15 +24,15 @@ class ItemStatus(str, Enum):
     failed = "failed"
 
 
-class BatchCreate(BaseModel):
+class JobCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     priority: Priority = Priority.medium
     document_ids: list[str] = Field(min_length=1, max_length=500)
 
 
 class JobItemResponse(BaseModel):
-    item_id: str
-    batch_id: str
+    result_id: str
+    job_id: str
     document_id: str
     filename: str
     page_count: int
@@ -47,7 +47,7 @@ class JobItemResponse(BaseModel):
     language_routing: LanguageRouting | None = None
 
 
-class BatchProgress(BaseModel):
+class JobProgress(BaseModel):
     total: int
     pending: int
     processing: int
@@ -56,17 +56,17 @@ class BatchProgress(BaseModel):
     percent_complete: float
 
 
-class BatchResponse(BaseModel):
-    batch_id: str
+class JobResponse(BaseModel):
+    job_id: str
     name: str
     priority: Priority
-    status: BatchStatus
+    status: JobStatus
     created_at: datetime
     created_by: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
-    progress: BatchProgress
+    progress: JobProgress
 
 
-class BatchDetailResponse(BatchResponse):
+class JobDetailResponse(JobResponse):
     items: list[JobItemResponse]

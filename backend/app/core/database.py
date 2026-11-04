@@ -36,4 +36,4 @@ def ensure_indexes() -> None:
 
     db.audit_logs.create_index("audit_id", unique=True)
     db.audit_logs.create_index([("timestamp", DESCENDING)])
-    db.audit_logs.create_index("batch_id")
+    db.audit_logs.create_index("job_id")

@@ -5,10 +5,10 @@ from pydantic import BaseModel
 
 
 class AuditAction(str, Enum):
-    batch_created = "batch.created"
-    processing_started = "batch.processing_started"
+    job_created = "job.created"
+    processing_started = "job.processing_started"
     fields_corrected = "review.fields_corrected"
-    task_approved = "review.task_approved"
+    result_approved = "review.result_approved"
 
 
 class AuditEntry(BaseModel):
@@ -18,7 +18,7 @@ class AuditEntry(BaseModel):
     action: AuditAction
     entity_type: str
     entity_id: str
-    batch_id: str | None
+    job_id: str | None
     details: dict
 
 

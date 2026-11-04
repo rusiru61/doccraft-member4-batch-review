@@ -1,36 +1,42 @@
 from app.core.database import get_db
 from app.core.ids import to_object_id
-from app.repositories import batch_repository
+from app.repositories import job_repository
 
 
-def list_tasks(review_statuses: list[str]) -> list[dict]:
-    """Review tasks are results that are waiting for, or went through, human review."""
+def list_results(review_status: str, job_id: str | None = None) -> list[dict]:
+    """The review queue and its siblings: results with a given review status, lowest score first."""
+    query: dict = {"review_status": review_status}
+    if job_id is not None:
+        oid = to_object_id(job_id)
+        if oid is None:
+            return []
+        query["job_id"] = oid
     rows = (
         get_db()
-        .extraction_results.find({"review_status": {"$in": review_statuses}})
+        .extraction_results.find(query)
         .sort([("reliability_score", 1), ("created_at", 1), ("_id", 1)])
     )
-    return [batch_repository.result_from_doc(d) for d in rows]
+    return [job_repository.result_from_doc(d) for d in rows]
 
 
-def save_corrections(task_id: str, corrections: dict) -> bool:
+def save_corrections(result_id: str, corrections: dict) -> bool:
     """Only succeeds while the result is still waiting for review."""
-    oid = to_object_id(task_id)
+    oid = to_object_id(result_id)
     if oid is None:
         return False
-    result = get_db().extraction_results.update_one(
+    outcome = get_db().extraction_results.update_one(
         {"_id": oid, "review_status": "pending_review"},
         {"$set": {"corrections": corrections}},
     )
-    return result.matched_count == 1
+    return outcome.matched_count == 1
 
 
-def approve_task(task_id: str, user_id: str, when, final_fields: list[dict]) -> bool:
-    """Compare-and-set in ONE write: status, final values and approver are saved together."""
-    oid = to_object_id(task_id)
+def approve_result(result_id: str, user_id: str, when, final_fields: list[dict]) -> bool:
+    """Compare-and-set in ONE write: status, final values and reviewer are saved together."""
+    oid = to_object_id(result_id)
     if oid is None:
         return False
-    result = get_db().extraction_results.update_one(
+    outcome = get_db().extraction_results.update_one(
         {"_id": oid, "review_status": "pending_review"},
         {
             "$set": {
@@ -38,7 +44,9 @@ def approve_task(task_id: str, user_id: str, when, final_fields: list[dict]) -> 
                 "final_fields": final_fields,
                 "finalized_by": user_id,
                 "finalized_at": when,
+                "reviewed_by": user_id,
+                "reviewed_at": when,
             }
         },
     )
-    return result.modified_count == 1
+    return outcome.modified_count == 1

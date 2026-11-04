@@ -9,7 +9,7 @@ TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
 
 def _create(ids):
     body = {"name": "T", "priority": "high", "document_ids": ids}
-    return client.post("/api/v1/batches", json=body).json()["batch_id"]
+    return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
 def test_order_items_is_shortest_first():  # US-12 AC (no database needed)
@@ -29,11 +29,11 @@ def test_order_items_breaks_page_ties_by_text_length():
     assert [i["document_id"] for i in order_items(items)] == ["B", "A"]
 
 
-def test_one_failure_does_not_stop_the_batch(clean_test_db):  # US-03 AC1, AC2
-    batch_id = _create(TEN_DOCS)
-    assert client.post(f"/api/v1/batches/{batch_id}/process").status_code == 202
+def test_one_failure_does_not_stop_the_job(clean_test_db):  # US-03 AC1, AC2
+    job_id = _create(TEN_DOCS)
+    assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 202
 
-    detail = client.get(f"/api/v1/batches/{batch_id}").json()
+    detail = client.get(f"/api/v1/extraction-jobs/{job_id}").json()
     progress = detail["progress"]
     assert detail["status"] == "completed"
     assert (progress["completed"], progress["failed"]) == (9, 1)
@@ -45,19 +45,19 @@ def test_one_failure_does_not_stop_the_batch(clean_test_db):  # US-03 AC1, AC2
 
 
 def test_processing_follows_shortest_first_order(clean_test_db):  # US-12
-    batch_id = _create(["DOC-002", "DOC-001", "DOC-004"])  # 20, 2, 8 pages
-    client.post(f"/api/v1/batches/{batch_id}/process")
+    job_id = _create(["DOC-002", "DOC-001", "DOC-004"])  # 20, 2, 8 pages
+    client.post(f"/api/v1/extraction-jobs/{job_id}/process")
 
-    items = client.get(f"/api/v1/batches/{batch_id}").json()["items"]
+    items = client.get(f"/api/v1/extraction-jobs/{job_id}").json()["items"]
     in_order = sorted(items, key=lambda i: i["processing_order"])
     assert [i["document_id"] for i in in_order] == ["DOC-001", "DOC-004", "DOC-002"]
 
 
-def test_cannot_process_the_same_batch_twice(clean_test_db):
-    batch_id = _create(["DOC-001"])
-    assert client.post(f"/api/v1/batches/{batch_id}/process").status_code == 202
-    assert client.post(f"/api/v1/batches/{batch_id}/process").status_code == 409
+def test_cannot_process_the_same_job_twice(clean_test_db):
+    job_id = _create(["DOC-001"])
+    assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 202
+    assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 409
 
 
-def test_process_unknown_batch_returns_404(clean_test_db):
-    assert client.post("/api/v1/batches/BATCH-DOESNOTEXIST/process").status_code == 404
+def test_process_unknown_job_returns_404(clean_test_db):
+    assert client.post("/api/v1/extraction-jobs/JOB-DOESNOTEXIST/process").status_code == 404
