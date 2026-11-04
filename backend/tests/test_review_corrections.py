@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import get_db
 from app.main import app
+from bson import ObjectId
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
@@ -58,15 +59,15 @@ def test_reopened_task_shows_corrected_values():  # US-08 AC2
 def test_original_extraction_is_never_overwritten():
     task = _first_task()
     _fix_supplier(task["task_id"])
-    item = get_db().job_items.find_one({"item_id": task["item_id"]})
-    original = item["extraction"]["field_values"]["supplier_name"]
+    stored = get_db().extraction_results.find_one({"_id": ObjectId(task["task_id"])})
+    original = stored["field_values"]["supplier_name"]
     assert original["value"] is None and original["status"] == "missing"
 
 
 def test_correction_records_who_and_when():
     task = _first_task()
     _fix_supplier(task["task_id"])
-    saved = get_db().review_tasks.find_one({"task_id": task["task_id"]})
+    saved = get_db().extraction_results.find_one({"_id": ObjectId(task["task_id"])})
     assert saved["corrections"]["supplier_name"]["corrected_by"] == "user_001"
     assert saved["corrections"]["supplier_name"]["corrected_at"] is not None
 
@@ -86,8 +87,8 @@ def test_blank_value_is_rejected():
 
 def test_approved_task_cannot_be_edited():
     task = _first_task()
-    get_db().review_tasks.update_one(
-        {"task_id": task["task_id"]}, {"$set": {"status": "approved"}}
+    get_db().extraction_results.update_one(
+        {"_id": ObjectId(task["task_id"])}, {"$set": {"review_status": "approved"}}
     )
     assert _fix_supplier(task["task_id"]).status_code == 409
 

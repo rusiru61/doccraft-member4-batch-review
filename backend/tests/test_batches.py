@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import get_db
 from app.main import app
+from bson import ObjectId
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
@@ -46,10 +47,11 @@ def test_unknown_batch_returns_404():
 
 def test_progress_percentage():  # US-02 AC1, AC2
     batch_id = _create(TEN_DOCS).json()["batch_id"]
-    items = get_db().job_items
-    first_four = [i["item_id"] for i in items.find({"batch_id": batch_id}).limit(4)]
-    items.update_many({"item_id": {"$in": first_four}}, {"$set": {"status": "completed"}})
+    results = get_db().extraction_results
+    job_oid = ObjectId(batch_id)
+    first_four = [r["_id"] for r in results.find({"job_id": job_oid}).limit(4)]
+    results.update_many({"_id": {"$in": first_four}}, {"$set": {"status": "completed"}})
     assert client.get(f"/api/v1/batches/{batch_id}").json()["progress"]["percent_complete"] == 40.0
 
-    items.update_many({"batch_id": batch_id}, {"$set": {"status": "completed"}})
+    results.update_many({"job_id": job_oid}, {"$set": {"status": "completed"}})
     assert client.get(f"/api/v1/batches/{batch_id}").json()["progress"]["percent_complete"] == 100.0

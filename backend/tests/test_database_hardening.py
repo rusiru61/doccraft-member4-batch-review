@@ -5,6 +5,7 @@ from pymongo.errors import DuplicateKeyError
 from app.core.database import ensure_indexes, get_db
 from app.main import app
 from app.repositories import batch_repository
+from bson import ObjectId
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
@@ -22,27 +23,27 @@ def test_ensure_indexes_is_idempotent():
 
 def test_expected_indexes_exist():
     db = get_db()
-    assert "batch_id_1" in db.batches.index_information()
-    assert {"item_id_1", "batch_id_1"} <= set(db.job_items.index_information())
-    assert "task_id_1" in db.review_tasks.index_information()
-    assert "status_1_reliability_score_1_created_at_1" in db.review_tasks.index_information()
-    assert "audit_id_1" in db.audit_log.index_information()
+    results = db.extraction_results.index_information()
+    assert "job_id_1_document_id_1" in results
+    assert "review_status_1_reliability_score_1_created_at_1" in results
+    assert "audit_id_1" in db.audit_logs.index_information()
 
 
-@pytest.mark.parametrize(
-    "collection, key",
-    [
-        ("batches", "batch_id"),
-        ("job_items", "item_id"),
-        ("review_tasks", "task_id"),
-        ("audit_log", "audit_id"),
-    ],
-)
-def test_unique_ids_are_enforced_by_the_database(collection, key):
-    target = getattr(get_db(), collection)
-    target.insert_one({key: "X-1"})
+def test_a_document_can_appear_only_once_per_job():
+    results = get_db().extraction_results
+    job_id = ObjectId()
+    results.insert_one({"job_id": job_id, "document_id": "DOC-001"})
     with pytest.raises(DuplicateKeyError):
-        target.insert_one({key: "X-1"})
+        results.insert_one({"job_id": job_id, "document_id": "DOC-001"})
+    results.insert_one({"job_id": ObjectId(), "document_id": "DOC-001"})  # another job is fine
+
+
+def test_audit_ids_are_unique():
+    audit = get_db().audit_logs
+    audit.insert_one({"audit_id": "AUD-1"})
+    with pytest.raises(DuplicateKeyError):
+        audit.insert_one({"audit_id": "AUD-1"})
+
 
 
 def test_list_batches_does_not_query_once_per_batch(monkeypatch):

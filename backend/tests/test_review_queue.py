@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 
 from app.core.database import get_db
 from app.main import app
-from app.repositories import review_repository
 from app.services.review_service import needs_review
 
 pytestmark = pytest.mark.usefixtures("clean_test_db")
@@ -49,13 +48,8 @@ def test_failed_document_creates_no_review_task():
 
 def test_queue_shows_only_pending_tasks():  # US-07 AC2
     _processed_batch(TEN_DOCS)
-    get_db().review_tasks.update_one({"document_id": "DOC-003"}, {"$set": {"status": "approved"}})
+    get_db().extraction_results.update_one(
+        {"document_id": "DOC-003"}, {"$set": {"review_status": "approved"}}
+    )
     tasks = client.get("/api/v1/review-tasks").json()
     assert [t["document_id"] for t in tasks] == ["DOC-006", "DOC-005"]
-
-
-def test_same_task_is_never_created_twice():  # NFR: exactly one task
-    task = {"task_id": "REV-X", "reliability_score": 0.5, "status": "pending"}
-    review_repository.upsert_task(dict(task))
-    review_repository.upsert_task(dict(task))
-    assert get_db().review_tasks.count_documents({"task_id": "REV-X"}) == 1
