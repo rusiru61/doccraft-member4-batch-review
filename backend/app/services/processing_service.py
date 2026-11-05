@@ -43,11 +43,11 @@ def start_processing(
     try:
         enqueue(job_id, job["priority"])
     except QueueUnavailableError:
-        repo.revert_job_to_pending(job_id)  # nothing was queued, so undo the mark
+        repo.revert_job_to_queued(job_id)  # nothing was queued, so undo the mark
         raise
     # The audit entry is written only after the job is really queued.
     audit_service.record(
-        user.user_id, AuditAction.processing_started, "job", job_id, job_id
+        user.user_id, AuditAction.processing_started, "extraction_job", job_id, job_id
     )
 
 
@@ -116,5 +116,6 @@ def process_job(
             logger.exception("Job %s: unexpected error on %s", job_id, item["document_id"])
             _mark_failed(result_id, "Unexpected processing error")
 
-    repo.set_job_status(job_id, "completed")
-    logger.info("Job %s: finished", job_id)
+    succeeded = repo.count_by_status(job_id).get("completed", 0)
+    repo.finish_processing(job_id, "review_required" if succeeded else "failed")
+    logger.info("Job %s: processing finished", job_id)

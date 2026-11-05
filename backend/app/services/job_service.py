@@ -5,8 +5,7 @@ from app.integrations.document_provider import DocumentProvider
 from app.repositories import job_repository as repo
 from app.schemas.audit import AuditAction
 from app.schemas.job import (
-    JobCreate, JobDetailResponse, JobProgress, JobResponse,
-    JobStatus, ItemStatus, JobItemResponse,
+    ItemStatus, JobCreate, JobDetailResponse, JobItemResponse, JobProgress, JobResponse, JobStatus,
 )
 from app.services import audit_service
 
@@ -47,7 +46,7 @@ def create_job(payload: JobCreate, provider: DocumentProvider, user: CurrentUser
     job = {
         "name": payload.name,
         "priority": payload.priority.value,
-        "status": JobStatus.pending.value,
+        "status": JobStatus.queued.value,
         "created_by": user.user_id,
         "created_at": now,
         "started_at": None,
@@ -71,7 +70,7 @@ def create_job(payload: JobCreate, provider: DocumentProvider, user: CurrentUser
     audit_service.record(
         user.user_id,
         AuditAction.job_created,
-        "job",
+        "extraction_job",
         job_id,
         job_id,
         {"name": payload.name, "priority": payload.priority.value, "document_count": len(items)},
@@ -79,21 +78,14 @@ def create_job(payload: JobCreate, provider: DocumentProvider, user: CurrentUser
     return _to_job_response({**job, "job_id": job_id})
 
 
-def list_jobs() -> list[JobResponse]:
-    jobs = repo.list_jobs()
-    stats = repo.summarize_items([b["job_id"] for b in jobs]) if jobs else {}
-    responses = []
-    for job in jobs:
-        s = stats.get(job["job_id"], {})
-        counts = {k: s.get(k, 0) for k in ("pending", "processing", "completed", "failed")}
-        responses.append(JobResponse(**job, progress=build_progress(counts)))
-    return responses
+def get_job(job_id: str) -> JobResponse | None:
+    job = repo.find_job(job_id)
+    return None if job is None else _to_job_response(job)
 
 
 def get_job_detail(job_id: str) -> JobDetailResponse | None:
-    job = repo.find_job(job_id)
-    if job is None:
+    summary = get_job(job_id)
+    if summary is None:
         return None
-    summary = _to_job_response(job)
     items = [JobItemResponse(**i) for i in repo.list_items(job_id)]
     return JobDetailResponse(**summary.model_dump(), items=items)

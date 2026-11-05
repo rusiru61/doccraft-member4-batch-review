@@ -9,6 +9,7 @@ class AuditAction(str, Enum):
     processing_started = "job.processing_started"
     fields_corrected = "review.fields_corrected"
     result_approved = "review.result_approved"
+    job_finalized = "job.finalized"
 
 
 class AuditEntry(BaseModel):

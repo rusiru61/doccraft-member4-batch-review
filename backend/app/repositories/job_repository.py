@@ -20,7 +20,7 @@ def result_from_doc(doc: dict | None) -> dict | None:
         return None
     doc = dict(doc)
     doc["result_id"] = str(doc.pop("_id"))
-    doc["job_id"] = str(doc.pop("job_id"))
+    doc["job_id"] = str(doc["job_id"])
     return doc
 
 
@@ -39,11 +39,6 @@ def find_job(job_id: str) -> dict | None:
     if oid is None:
         return None
     return job_from_doc(get_db().extraction_jobs.find_one({"_id": oid}))
-
-
-def list_jobs() -> list[dict]:
-    rows = get_db().extraction_jobs.find({}).sort([("created_at", -1), ("_id", 1)])
-    return [job_from_doc(d) for d in rows]
 
 
 def list_items(job_id: str) -> list[dict]:
@@ -72,15 +67,24 @@ def count_by_status(job_id: str) -> dict[str, int]:
     return {row["_id"]: row["count"] for row in get_db().extraction_results.aggregate(pipeline)}
 
 
+def count_pending_review(job_id: str) -> int:
+    oid = to_object_id(job_id)
+    if oid is None:
+        return 0
+    return get_db().extraction_results.count_documents(
+        {"job_id": oid, "review_status": "pending_review"}
+    )
+
+
 def try_mark_job_processing(job_id: str) -> bool:
-    """Compare-and-set: succeeds only if the job is still 'pending'."""
+    """Compare-and-set: succeeds only if the job is still 'queued'."""
     oid = to_object_id(job_id)
     if oid is None:
         return False
-    result = get_db().extraction_jobs.update_one(
-        {"_id": oid, "status": "pending"}, {"$set": {"status": "processing"}}
+    outcome = get_db().extraction_jobs.update_one(
+        {"_id": oid, "status": "queued"}, {"$set": {"status": "processing"}}
     )
-    return result.modified_count == 1
+    return outcome.modified_count == 1
 
 
 def mark_job_started(job_id: str) -> None:
@@ -94,23 +98,35 @@ def mark_job_started(job_id: str) -> None:
     )
 
 
-def set_job_status(job_id: str, status: str) -> None:
+def finish_processing(job_id: str, status: str) -> None:
+    """The worker is done. 'processed_at' measures processing time, not review time."""
     oid = to_object_id(job_id)
     if oid is None:
         return
-    fields = {"status": status}
-    if status == "completed":
-        fields["completed_at"] = datetime.now(timezone.utc)
-    get_db().extraction_jobs.update_one({"_id": oid}, {"$set": fields})
+    get_db().extraction_jobs.update_one(
+        {"_id": oid}, {"$set": {"status": status, "processed_at": datetime.now(timezone.utc)}}
+    )
 
 
-def revert_job_to_pending(job_id: str) -> None:
+def try_finalize_job(job_id: str, new_status: str, user_id: str, when) -> bool:
+    """Compare-and-set: only a job in 'review_required' can be finalized, and only once."""
+    oid = to_object_id(job_id)
+    if oid is None:
+        return False
+    outcome = get_db().extraction_jobs.update_one(
+        {"_id": oid, "status": "review_required"},
+        {"$set": {"status": new_status, "completed_at": when, "finalized_by": user_id}},
+    )
+    return outcome.modified_count == 1
+
+
+def revert_job_to_queued(job_id: str) -> None:
     """Undo the 'processing' mark when the job could not be queued."""
     oid = to_object_id(job_id)
     if oid is None:
         return
     get_db().extraction_jobs.update_one(
-        {"_id": oid, "status": "processing"}, {"$set": {"status": "pending", "started_at": None}}
+        {"_id": oid, "status": "processing"}, {"$set": {"status": "queued", "started_at": None}}
     )
 
 

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from pymongo.errors import PyMongoError
 
-from app.api import audit, jobs, health, history, results, review
+from app.api import audit, jobs, health, results, review
 from app.core.config import settings
 from app.core.database import ensure_indexes
 from app.core.errors import register_error_handlers
@@ -39,6 +39,5 @@ api_v1 = APIRouter(prefix=API_PREFIX)
 api_v1.include_router(jobs.router)
 api_v1.include_router(review.router)
 api_v1.include_router(results.router)
-api_v1.include_router(history.router)
 api_v1.include_router(audit.router)
 app.include_router(api_v1)
