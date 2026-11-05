@@ -36,13 +36,13 @@ def test_queue_outage_returns_503_and_leaves_job_pending(monkeypatch):
         patch.setattr("app.api.jobs.enqueue_job_processing", broken_queue)
         assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 503
 
-    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "pending"
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "queued"
     started = client.get("/api/v1/audit-log", params={"action": "job.processing_started"}).json()
     assert started["total"] == 0  # nothing happened, so nothing is audited
 
     # Once the queue is back, the same job can be started normally.
     assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 202
-    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "completed"
+    assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "review_required"
 
 
 def test_resumed_processing_skips_finished_items():
@@ -63,7 +63,7 @@ def test_resumed_processing_skips_finished_items():
 
     detail = client.get(f"/api/v1/extraction-jobs/{job_id}").json()
     items = {i["document_id"]: i for i in detail["items"]}
-    assert detail["status"] == "completed"
+    assert detail["status"] == "review_required"
     assert items["DOC-001"]["reliability_score"] == 0.123  # untouched: not reprocessed
     assert items["DOC-002"]["status"] == "completed"
     assert items["DOC-004"]["status"] == "completed"

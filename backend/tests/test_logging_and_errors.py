@@ -67,10 +67,10 @@ def test_unexpected_error_is_logged_with_a_stack_trace(caplog):
 
 
 def test_database_outage_returns_503_with_request_id(monkeypatch):
-    def database_down():
+    def database_down(*args, **kwargs):
         raise ServerSelectionTimeoutError("mongo is down")
 
-    monkeypatch.setattr("app.repositories.job_repository.list_jobs", database_down)
+    monkeypatch.setattr("app.repositories.job_repository.list_jobs_page", database_down)
     response = client.get("/api/v1/extraction-jobs")
     assert response.status_code == 503
     body = response.json()["error"]

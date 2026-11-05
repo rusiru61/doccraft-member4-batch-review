@@ -78,7 +78,7 @@ def test_every_error_body_contains_only_documented_keys():
 
 
 def test_paginated_lists_use_page_and_page_size():
-    for path in ("/api/v1/job-history", "/api/v1/audit-log"):
+    for path in ("/api/v1/extraction-jobs", "/api/v1/audit-log"):
         body = client.get(path).json()
         assert {"items", "total", "page", "page_size"} <= set(body)
         assert "limit" not in body and "offset" not in body

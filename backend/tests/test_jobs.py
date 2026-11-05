@@ -22,7 +22,7 @@ def test_create_job_has_pending_status_and_five_items():  # US-01 AC1, AC2
     response = _create(FIVE_DOCS)
     assert response.status_code == 201
     body = response.json()
-    assert body["status"] == "pending"
+    assert body["status"] == "queued"
     assert body["progress"]["total"] == 5
     detail = client.get(f"/api/v1/extraction-jobs/{body['job_id']}").json()
     assert len(detail["items"]) == 5

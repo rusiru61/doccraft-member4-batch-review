@@ -56,12 +56,13 @@ def test_list_jobs_does_not_query_once_per_job(monkeypatch):
     monkeypatch.setattr(job_repository, "count_by_status", forbidden)
     response = client.get("/api/v1/extraction-jobs")
     assert response.status_code == 200
-    assert len(response.json()) == 3
+    assert response.json()["total"] == 3
 
 
-def test_list_progress_matches_detail_progress():
+def test_list_counts_match_detail_progress():
     job_id = _create([f"DOC-{n:03d}" for n in range(1, 11)])
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
-    listed = client.get("/api/v1/extraction-jobs").json()[0]
-    detail = client.get(f"/api/v1/extraction-jobs/{job_id}").json()
-    assert listed["progress"] == detail["progress"]
+    listed = client.get("/api/v1/extraction-jobs").json()["items"][0]
+    progress = client.get(f"/api/v1/extraction-jobs/{job_id}").json()["progress"]
+    assert listed["percent_complete"] == progress["percent_complete"]
+    assert (listed["completed"], listed["failed"]) == (progress["completed"], progress["failed"])

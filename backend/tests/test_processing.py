@@ -35,7 +35,7 @@ def test_one_failure_does_not_stop_the_job(clean_test_db):  # US-03 AC1, AC2
 
     detail = client.get(f"/api/v1/extraction-jobs/{job_id}").json()
     progress = detail["progress"]
-    assert detail["status"] == "completed"
+    assert detail["status"] == "review_required"
     assert (progress["completed"], progress["failed"]) == (9, 1)
     assert progress["percent_complete"] == 100.0
 
