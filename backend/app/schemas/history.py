@@ -19,6 +19,7 @@ class JobHistoryEntry(BaseModel):
     completed: int
     failed: int
     pending_review: int
+    percent_complete: float
 
 
 class JobHistoryPage(BaseModel):

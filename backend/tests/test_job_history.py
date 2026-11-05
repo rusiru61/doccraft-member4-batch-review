@@ -18,15 +18,14 @@ def _create(ids=("DOC-001",), name="T"):
 
 
 def _history(**params):
-    return client.get("/api/v1/job-history", params=params).json()
+    return client.get("/api/v1/extraction-jobs", params=params).json()
 
 
 def test_creation_event_is_recorded():  # US-11 AC1
     job_id = _create()
-    page = _history()
-    entry = page["items"][0]
+    entry = _history()["items"][0]
     assert entry["job_id"] == job_id
-    assert entry["status"] == "pending"
+    assert entry["status"] == "queued"
     assert entry["created_by"] == "user_001"
     assert entry["created_at"] is not None
     assert entry["started_at"] is None and entry["duration_seconds"] is None
@@ -36,10 +35,12 @@ def test_processed_job_shows_counts_and_duration():
     job_id = _create(TEN_DOCS)
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     entry = _history()["items"][0]
-    assert entry["status"] == "completed"
+    assert entry["status"] == "review_required"
     assert (entry["total"], entry["completed"], entry["failed"]) == (10, 9, 1)
     assert entry["pending_review"] == 3
-    assert entry["started_at"] is not None and entry["completed_at"] is not None
+    assert entry["percent_complete"] == 100.0
+    assert entry["started_at"] is not None
+    assert entry["completed_at"] is None  # set only when the job is finalized
     assert entry["duration_seconds"] >= 0
 
 
@@ -54,11 +55,11 @@ def test_history_is_newest_first():
 
 
 def test_history_can_be_filtered_by_status():
-    pending = _create(name="pending")
+    queued = _create(name="queued")
     done = _create(["DOC-001"], name="done")
     client.post(f"/api/v1/extraction-jobs/{done}/process")
-    assert [e["job_id"] for e in _history(status="completed")["items"]] == [done]
-    assert [e["job_id"] for e in _history(status="pending")["items"]] == [pending]
+    assert [e["job_id"] for e in _history(status="review_required")["items"]] == [done]
+    assert [e["job_id"] for e in _history(status="queued")["items"]] == [queued]
 
 
 def test_pagination_returns_slices_and_total():
@@ -74,7 +75,7 @@ def test_pagination_returns_slices_and_total():
 
 @pytest.mark.parametrize("params", [{"page_size": 0}, {"page_size": 101}, {"page": 0}])
 def test_page_parameters_outside_allowed_range_are_rejected(params):
-    assert client.get("/api/v1/job-history", params=params).status_code == 422
+    assert client.get("/api/v1/extraction-jobs", params=params).status_code == 422
 
 
 def test_pending_review_count_drops_after_approval():

@@ -96,7 +96,7 @@ def test_read_requests_write_no_audit_entry():
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     before = _log()["total"]
     for path in ("/api/v1/extraction-jobs", f"/api/v1/extraction-jobs/{job_id}", "/api/v1/extraction-results",
-                 "/api/v1/job-history", "/api/v1/finalized-results", "/api/v1/audit-log"):
+                 "/api/v1/extraction-jobs", "/api/v1/finalized-results", "/api/v1/audit-log"):
         assert client.get(path).status_code == 200
     assert _log()["total"] == before
 

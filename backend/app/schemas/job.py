@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import Enum
-from app.schemas.routing import LanguageRouting
 
 from pydantic import BaseModel, Field
+
+from app.schemas.routing import LanguageRouting
 
 
 class Priority(str, Enum):
@@ -12,9 +13,13 @@ class Priority(str, Enum):
 
 
 class JobStatus(str, Enum):
-    pending = "pending"
+    queued = "queued"
     processing = "processing"
+    review_required = "review_required"
     completed = "completed"
+    partially_failed = "partially_failed"
+    failed = "failed"
+    cancelled = "cancelled"
 
 
 class ItemStatus(str, Enum):
@@ -40,8 +45,8 @@ class JobItemResponse(BaseModel):
     detected_language: str
     status: ItemStatus
     error_message: str | None = None
-    processing_order: int | None = None
     created_at: datetime
+    processing_order: int | None = None
     reliability_score: float | None = None
     review_status: str | None = None
     language_routing: LanguageRouting | None = None
@@ -65,6 +70,7 @@ class JobResponse(BaseModel):
     created_by: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    finalized_by: str | None = None
     progress: JobProgress
 
 
