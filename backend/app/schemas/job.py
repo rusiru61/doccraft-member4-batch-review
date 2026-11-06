@@ -30,9 +30,13 @@ class ItemStatus(str, Enum):
 
 
 class JobCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    priority: Priority = Priority.medium
     document_ids: list[str] = Field(min_length=1, max_length=500)
+    template_id: str = Field(min_length=1)
+    mapping_id: str = Field(min_length=1)
+    # Optional extras beyond the team contract:
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    priority: Priority = Priority.medium
+    start: bool = True  # False = create now, start later with POST /{job_id}/process
 
 
 class JobItemResponse(BaseModel):
@@ -52,6 +56,11 @@ class JobItemResponse(BaseModel):
     language_routing: LanguageRouting | None = None
 
 
+class JobResultResponse(JobItemResponse):
+    field_values: dict | None = None
+    final_fields: list[dict] | None = None
+
+
 class JobProgress(BaseModel):
     total: int
     pending: int
@@ -66,6 +75,9 @@ class JobResponse(BaseModel):
     name: str
     priority: Priority
     status: JobStatus
+    template_id: str | None = None
+    mapping_id: str | None = None
+    mapping_version: int | None = None
     created_at: datetime
     created_by: str | None = None
     started_at: datetime | None = None
