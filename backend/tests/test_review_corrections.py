@@ -10,7 +10,7 @@ client = TestClient(app)
 
 
 def _first_task():
-    body = {"name": "T", "priority": "high", "document_ids": ["DOC-003"]}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ["DOC-003"]}
     job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     return client.get("/api/v1/extraction-results").json()[0]

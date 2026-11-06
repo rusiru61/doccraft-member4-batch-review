@@ -9,7 +9,7 @@ ALLOWED_ERROR_KEYS = {"code", "message", "details", "request_id"}
 
 
 def _create(ids=("DOC-001",)):
-    body = {"name": "T", "priority": "high", "document_ids": list(ids)}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": list(ids)}
     return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
@@ -37,7 +37,7 @@ def test_not_found_uses_the_contract_error_format():
 
 def test_validation_error_has_field_details_and_never_echoes_input():
     response = client.post(
-        "/api/v1/extraction-jobs", json={"name": "T", "priority": "high", "document_ids": []}
+        "/api/v1/extraction-jobs", json={"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": []}
     )
     error = response.json()["error"]
     assert response.status_code == 422

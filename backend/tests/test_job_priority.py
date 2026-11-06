@@ -15,7 +15,7 @@ USER = CurrentUser(user_id="user_001", role="operator")
 
 
 def _create(priority="medium"):
-    body = {"name": "T", "priority": priority, "document_ids": ["DOC-001"]}
+    body = {"name": "T", "priority": priority, "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ["DOC-001"]}
     return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 

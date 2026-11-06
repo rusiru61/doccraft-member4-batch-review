@@ -18,7 +18,7 @@ DEFINITIONS = MockDataStructureProvider().get_field_definitions()
 
 
 def _create(ids):
-    body = {"name": "T", "priority": "high", "document_ids": list(ids)}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": list(ids)}
     return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 
