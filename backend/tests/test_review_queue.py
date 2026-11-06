@@ -11,7 +11,7 @@ TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
 
 
 def _processed_job(ids):
-    body = {"name": "T", "priority": "high", "document_ids": ids}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ids}
     job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     return job_id

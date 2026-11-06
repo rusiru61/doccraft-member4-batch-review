@@ -14,7 +14,7 @@ TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
 
 def _create(ids, name="Demo", priority="high"):
     return client.post(
-        "/api/v1/extraction-jobs", json={"name": name, "priority": priority, "document_ids": ids}
+        "/api/v1/extraction-jobs", json={"name": name, "priority": priority, "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ids}
     )
 
 

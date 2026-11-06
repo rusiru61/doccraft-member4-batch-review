@@ -11,8 +11,7 @@ class ExtractionError(Exception):
 
 
 class ExtractionService(Protocol):
-    def extract(self, document_id: str) -> ExtractionResult: ...
-
+    def extract(self, document_id: str, mapping_id: str | None = None) -> ExtractionResult: ...
 
 # document_id -> (ai_confidence, what happens to the supplier_name field)
 _OUTCOMES = {
@@ -32,7 +31,7 @@ _FAILING_IDS = {"DOC-008"}
 class MockExtractionService:
     """Fake stand-in for Member 3. Same output for the same document, every run."""
 
-    def extract(self, document_id: str) -> ExtractionResult:
+    def extract(self, document_id: str, mapping_id: str | None = None) -> ExtractionResult:
         time.sleep(settings.mock_processing_delay_seconds)
         if document_id in _FAILING_IDS:
             raise ExtractionError("Mock failure: text could not be read from document")

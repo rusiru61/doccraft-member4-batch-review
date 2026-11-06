@@ -16,7 +16,7 @@ client = TestClient(app)
 
 
 def _create(ids):
-    body = {"name": "T", "priority": "high", "document_ids": ids}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ids}
     return client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
 
 

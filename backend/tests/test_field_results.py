@@ -27,7 +27,7 @@ def no_delay(monkeypatch):
 class _ConfidentButIncomplete:
     """Engine stub: top confidence, but a required field is missing."""
 
-    def extract(self, document_id):
+    def extract(self, document_id, mapping_id=None):
         result = MockExtractionService().extract("DOC-001")
         result.field_values["supplier_name"] = FieldResult(value=None, status="missing")
         result.ai_confidence = 1.0
@@ -82,7 +82,7 @@ def test_final_fields_prefer_corrections_and_ignore_unexpected_keys():
 
 @pytest.mark.usefixtures("clean_test_db")
 def test_field_definitions_are_snapshotted_on_each_item():
-    body = {"name": "T", "priority": "high", "document_ids": ["DOC-001"]}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ["DOC-001"]}
     job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     item = get_db().extraction_results.find_one({"job_id": ObjectId(job_id)})
@@ -93,7 +93,7 @@ def test_field_definitions_are_snapshotted_on_each_item():
 
 @pytest.mark.usefixtures("clean_test_db")
 def test_invalid_required_field_blocks_finalizing_until_corrected():
-    body = {"name": "T", "priority": "high", "document_ids": ["DOC-006"]}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ["DOC-006"]}
     job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
     client.post(f"/api/v1/extraction-jobs/{job_id}/process")
     task = client.get("/api/v1/extraction-results").json()[0]
@@ -110,7 +110,7 @@ def test_invalid_required_field_blocks_finalizing_until_corrected():
 
 @pytest.mark.usefixtures("clean_test_db")
 def test_perfect_scores_still_go_to_review_when_a_required_field_is_missing():
-    body = {"name": "T", "priority": "high", "document_ids": ["DOC-001"]}
+    body = {"name": "T", "priority": "high", "template_id": "TEMPLATE-INVOICE", "mapping_id": "MAPPING-INVOICE", "start": False, "document_ids": ["DOC-001"]}
     job_id = client.post("/api/v1/extraction-jobs", json=body).json()["job_id"]
     processing_service.process_job(job_id, _ConfidentButIncomplete(), _PerfectOcr())
 
