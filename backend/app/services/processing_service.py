@@ -38,12 +38,12 @@ def start_processing(
     job = repo.find_job(job_id)
     if job is None:
         raise JobNotFoundError(job_id)
-    if not repo.try_mark_job_processing(job_id):
+    if not repo.try_request_start(job_id):
         raise JobNotPendingError(job_id)
     try:
         enqueue(job_id, job["priority"])
     except QueueUnavailableError:
-        repo.revert_job_to_queued(job_id)  # nothing was queued, so undo the mark
+        repo.cancel_start_request(job_id)  # nothing was queued, so undo the request
         raise
     # The audit entry is written only after the job is really queued.
     audit_service.record(
@@ -61,9 +61,19 @@ def process_job(
     ocr_service: OcrService,
     structure_provider: DataStructureProvider | None = None,
 ) -> None:
+    job = repo.find_job(job_id)
+    if job is None:
+        logger.warning("Job %s not found, nothing to process", job_id)
+        return
+    if not repo.begin_processing(job_id):
+        logger.info("Job %s is '%s', nothing to process", job_id, job["status"])
+        return
     repo.mark_job_started(job_id)
-    # Snapshot the field definitions once per run, so review never depends on a live lookup.
-    definitions = (structure_provider or get_data_structure_provider()).get_field_definitions()
+
+    # The mapping decides which data structure applies. Snapshot its fields once per run,
+    # so review never depends on a live lookup.
+    provider = structure_provider or get_data_structure_provider()
+    definitions = provider.get_field_definitions(job.get("data_structure_id"))
     definition_snapshot = [d.model_dump() for d in definitions]
 
     items = order_items(repo.list_items(job_id))
@@ -84,7 +94,7 @@ def process_job(
             },
         )
         try:
-            result = extractor.extract(item["document_id"])
+            result = extractor.extract(item["document_id"], job.get("mapping_id"))
             extracted = result.model_dump()
             ocr = ocr_service.get_ocr_confidence(item["document_id"], item.get("is_scanned", False))
             problems = extraction_rules.find_required_problems(extracted["field_values"], definitions)

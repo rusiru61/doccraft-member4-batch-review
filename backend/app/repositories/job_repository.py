@@ -76,16 +76,6 @@ def count_pending_review(job_id: str) -> int:
     )
 
 
-def try_mark_job_processing(job_id: str) -> bool:
-    """Compare-and-set: succeeds only if the job is still 'queued'."""
-    oid = to_object_id(job_id)
-    if oid is None:
-        return False
-    outcome = get_db().extraction_jobs.update_one(
-        {"_id": oid, "status": "queued"}, {"$set": {"status": "processing"}}
-    )
-    return outcome.modified_count == 1
-
 
 def mark_job_started(job_id: str) -> None:
     """Called by the worker. Keeps the first start time if the job is resumed."""
@@ -119,15 +109,6 @@ def try_finalize_job(job_id: str, new_status: str, user_id: str, when) -> bool:
     )
     return outcome.modified_count == 1
 
-
-def revert_job_to_queued(job_id: str) -> None:
-    """Undo the 'processing' mark when the job could not be queued."""
-    oid = to_object_id(job_id)
-    if oid is None:
-        return
-    get_db().extraction_jobs.update_one(
-        {"_id": oid, "status": "processing"}, {"$set": {"status": "queued", "started_at": None}}
-    )
 
 
 def update_item(result_id: str, fields: dict) -> None:
@@ -180,3 +161,38 @@ def summarize_items(job_ids: list[str]) -> dict[str, dict]:
         },
     ]
     return {str(row["_id"]): row for row in get_db().extraction_results.aggregate(pipeline)}
+
+
+def try_request_start(job_id: str) -> bool:
+    """Compare-and-set: only a queued job whose start was not requested yet. Stops double starts."""
+    oid = to_object_id(job_id)
+    if oid is None:
+        return False
+    outcome = get_db().extraction_jobs.update_one(
+        {"_id": oid, "status": "queued", "start_requested_at": None},
+        {"$set": {"start_requested_at": datetime.now(timezone.utc)}},
+    )
+    return outcome.modified_count == 1
+
+
+def cancel_start_request(job_id: str) -> None:
+    """Undo the start request when the job could not be queued."""
+    oid = to_object_id(job_id)
+    if oid is None:
+        return
+    get_db().extraction_jobs.update_one(
+        {"_id": oid, "status": "queued"}, {"$set": {"start_requested_at": None}}
+    )
+
+
+def begin_processing(job_id: str) -> bool:
+    """Called by the worker. A queued job starts. A job already 'processing' is a resume
+    after a restart. Any other state is left alone."""
+    oid = to_object_id(job_id)
+    if oid is None:
+        return False
+    outcome = get_db().extraction_jobs.update_one(
+        {"_id": oid, "status": {"$in": ["queued", "processing"]}},
+        {"$set": {"status": "processing"}},
+    )
+    return outcome.matched_count == 1
