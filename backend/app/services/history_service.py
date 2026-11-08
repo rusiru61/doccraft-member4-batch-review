@@ -33,9 +33,13 @@ def _to_entry(job: dict, stats: dict) -> JobHistoryEntry:
     )
 
 
-def get_history(status: JobStatus | None, page: int, page_size: int) -> JobHistoryPage:
+def get_history(
+    status: JobStatus | None, page: int, page_size: int, created_by: str | None = None
+) -> JobHistoryPage:
     offset = (page - 1) * page_size
-    jobs, total = repo.list_jobs_page(status.value if status else None, page_size, offset)
+    jobs, total = repo.list_jobs_page(
+        status.value if status else None, page_size, offset, created_by
+    )
     stats = repo.summarize_items([j["job_id"] for j in jobs]) if jobs else {}
     entries = [_to_entry(j, stats.get(j["job_id"], {})) for j in jobs]
     return JobHistoryPage(total=total, page=page, page_size=page_size, items=entries)

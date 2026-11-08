@@ -10,7 +10,7 @@ from app.schemas.extraction import ExtractionResult
 from app.schemas.review import (
     CorrectionRequest, ResultDetail, ResultSummary, ReviewFieldView, ReviewStatus,
 )
-from app.services import audit_service, extraction_rules
+from app.services import audit_service, extraction_rules, permissions
 
 
 class ResultNotFoundError(Exception):
@@ -75,20 +75,27 @@ def _definitions(result: dict) -> list[FieldDefinition]:
     return [FieldDefinition(**d) for d in result["field_definitions"]]
 
 
-def _load_result(result_id: str) -> dict:
-    """Only a completed extraction has data to review. Failed or unknown results are 'not found'."""
+def _load_result(result_id: str, user: CurrentUser) -> dict:
+    """Failed, unknown and other people's results are all 'not found'."""
     result = job_repository.find_item(result_id)
-    if result is None or result.get("status") != "completed":
+    if (
+        result is None
+        or result.get("status") != "completed"
+        or not permissions.can_access(user, result.get("created_by"))
+    ):
         raise ResultNotFoundError(result_id)
     return result
 
 
-def list_results(review_status: ReviewStatus, job_id: str | None) -> list[ResultSummary]:
-    return [ResultSummary(**r) for r in repo.list_results(review_status.value, job_id)]
+def list_results(
+    review_status: ReviewStatus, job_id: str | None, user: CurrentUser
+) -> list[ResultSummary]:
+    rows = repo.list_results(review_status.value, job_id, permissions.owner_scope(user))
+    return [ResultSummary(**r) for r in rows]
 
 
-def get_result_detail(result_id: str) -> ResultDetail:
-    result = _load_result(result_id)
+def get_result_detail(result_id: str, user: CurrentUser) -> ResultDetail:
+    result = _load_result(result_id, user)
     field_values = result["field_values"]
     corrections = result.get("corrections", {})
 
@@ -120,7 +127,7 @@ def get_result_detail(result_id: str) -> ResultDetail:
 def apply_corrections(
     result_id: str, request: CorrectionRequest, user: CurrentUser
 ) -> ResultDetail:
-    result = _load_result(result_id)
+    result = _load_result(result_id, user)
     if result["review_status"] != "pending_review":
         raise ReviewNotPendingError(result_id)
 
@@ -129,20 +136,8 @@ def apply_corrections(
     if unknown:
         raise UnknownFieldError(unknown)
 
-    field_values = result["field_values"]
-    previous = result.get("corrections", {})
-    changes = {
-        c.field_id: {
-            "from": previous[c.field_id]["value"]
-            if c.field_id in previous
-            else (field_values.get(c.field_id) or {}).get("value"),
-            "to": c.value,
-        }
-        for c in request.corrections
-    }
-
     now = datetime.now(timezone.utc)
-    merged = dict(previous)
+    merged = dict(result.get("corrections", {}))
     for c in request.corrections:
         merged[c.field_id] = {"value": c.value, "corrected_by": user.user_id, "corrected_at": now}
 
@@ -154,13 +149,14 @@ def apply_corrections(
         "extraction_result",
         result_id,
         result["job_id"],
-        {"document_id": result["document_id"], "changes": changes},
+        changed_fields=[c.field_id for c in request.corrections],
+        safe_metadata={"document_id": result["document_id"]},
     )
-    return get_result_detail(result_id)
+    return get_result_detail(result_id, user)
 
 
 def approve_result(result_id: str, user: CurrentUser) -> ResultDetail:
-    result = _load_result(result_id)
+    result = _load_result(result_id, user)
     if result["review_status"] != "pending_review":
         raise ReviewNotPendingError(result_id)
 
@@ -186,9 +182,7 @@ def approve_result(result_id: str, user: CurrentUser) -> ResultDetail:
         "extraction_result",
         result_id,
         result["job_id"],
-        {
-            "document_id": result["document_id"],
-            "corrected_fields": [f["field_id"] for f in final_fields if f["status"] == "corrected"],
-        },
+        changed_fields=[f["field_id"] for f in final_fields if f["status"] == "corrected"],
+        safe_metadata={"document_id": result["document_id"]},
     )
-    return get_result_detail(result_id)
+    return get_result_detail(result_id, user)

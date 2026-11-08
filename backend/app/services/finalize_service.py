@@ -6,7 +6,7 @@ from app.integrations.output_service import OutputService
 from app.repositories import job_repository as repo
 from app.schemas.audit import AuditAction
 from app.schemas.job import JobResponse
-from app.services import audit_service, job_service
+from app.services import audit_service, job_service, permissions
 from app.services.processing_service import JobNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class ReviewsPendingError(Exception):
 
 def finalize_job(job_id: str, user: CurrentUser, output_service: OutputService) -> JobResponse:
     job = repo.find_job(job_id)
-    if job is None:
+    if job is None or not permissions.can_access(user, job.get("created_by")):
         raise JobNotFoundError(job_id)
     if job["status"] != "review_required":
         raise JobNotFinalizableError(job["status"])
@@ -45,11 +45,11 @@ def finalize_job(job_id: str, user: CurrentUser, output_service: OutputService) 
         "extraction_job",
         job_id,
         job_id,
-        {"status": final_status, "document_count": sum(counts.values())},
+        safe_metadata={"status": final_status, "document_count": sum(counts.values())},
     )
     try:
         output_service.deliver(job_id)
     except Exception:
         # Delivery status is separate from extraction: a failed delivery never undoes finalization.
         logger.exception("Delivery request failed for job %s; results are kept", job_id)
-    return job_service.get_job(job_id)
+    return job_service.get_job(job_id, user)

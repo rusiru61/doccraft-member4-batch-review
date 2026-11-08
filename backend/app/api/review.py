@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 
 from app.core.errors import ApiError
-from app.integrations.auth_service import CurrentUser, get_current_user
+from app.integrations.auth_service import CurrentUser, require_roles
 from app.schemas.review import CorrectionRequest, ResultDetail, ResultSummary, ReviewStatus
-from app.services import review_service
+from app.services import permissions, review_service
 from app.services.review_service import (
     MissingRequiredFieldsError, ResultNotFoundError, ReviewNotPendingError, UnknownFieldError,
 )
@@ -23,15 +23,18 @@ def _not_pending() -> ApiError:
 def list_results(
     review_status: ReviewStatus = ReviewStatus.pending_review,
     job_id: str | None = None,
+    user: CurrentUser = Depends(require_roles(*permissions.VIEW_RESULTS)),
 ):
-    """By default the review queue: results waiting for review, lowest reliability score first."""
-    return review_service.list_results(review_status, job_id)
+    """By default the review queue: your results waiting for review, lowest score first."""
+    return review_service.list_results(review_status, job_id, user)
 
 
 @router.get("/{result_id}", response_model=ResultDetail)
-def get_result(result_id: str):
+def get_result(
+    result_id: str, user: CurrentUser = Depends(require_roles(*permissions.VIEW_RESULTS))
+):
     try:
-        return review_service.get_result_detail(result_id)
+        return review_service.get_result_detail(result_id, user)
     except ResultNotFoundError:
         raise _not_found()
 
@@ -40,7 +43,7 @@ def get_result(result_id: str):
 def correct_result(
     result_id: str,
     payload: CorrectionRequest,
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_roles(*permissions.CORRECT_RESULTS)),
 ):
     """Save manual corrections before the result is approved."""
     try:
@@ -54,7 +57,9 @@ def correct_result(
 
 
 @router.post("/{result_id}/approve", response_model=ResultDetail)
-def approve_result(result_id: str, user: CurrentUser = Depends(get_current_user)):
+def approve_result(
+    result_id: str, user: CurrentUser = Depends(require_roles(*permissions.FINALIZE))
+):
     try:
         return review_service.approve_result(result_id, user)
     except ResultNotFoundError:

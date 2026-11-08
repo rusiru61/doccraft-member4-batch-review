@@ -9,7 +9,7 @@ from app.integrations.extraction_service import ExtractionError, ExtractionServi
 from app.integrations.ocr_service import OcrService
 from app.repositories import job_repository as repo
 from app.schemas.audit import AuditAction
-from app.services import audit_service, extraction_rules, review_service, routing_service
+from app.services import audit_service, extraction_rules, permissions, review_service, routing_service
 from app.services.reliability_service import calculate_reliability_score
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,8 @@ def start_processing(
     job_id: str, user: CurrentUser, enqueue: Callable[[str, str], None]
 ) -> None:
     job = repo.find_job(job_id)
-    if job is None:
-        raise JobNotFoundError(job_id)
+    if job is None or not permissions.can_access(user, job.get("created_by")):
+        raise JobNotFoundError(job_id)  # someone else's job looks exactly like a missing one
     if not repo.try_request_start(job_id):
         raise JobNotPendingError(job_id)
     try:

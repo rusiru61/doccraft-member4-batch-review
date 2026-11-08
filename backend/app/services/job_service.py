@@ -11,7 +11,7 @@ from app.schemas.job import (
     ItemStatus, JobCreate, JobDetailResponse, JobItemResponse, JobProgress,
     JobResponse, JobResultResponse, JobStatus,
 )
-from app.services import audit_service
+from app.services import audit_service, permissions
 
 
 class InvalidJobReferenceError(Exception):
@@ -102,6 +102,7 @@ def create_job(
             "document_id": doc.document_id,
             "template_id": payload.template_id,
             "mapping_id": mapping.mapping_id,
+            "created_by": user.user_id,  # copied so the review queue can filter by owner
             "filename": doc.filename,
             "page_count": doc.page_count,
             "text_length": doc.text_length,
@@ -120,7 +121,7 @@ def create_job(
         "extraction_job",
         job_id,
         job_id,
-        {
+        safe_metadata={
             "name": job["name"],
             "priority": payload.priority.value,
             "document_count": len(items),
@@ -131,20 +132,23 @@ def create_job(
     return _to_job_response({**job, "job_id": job_id})
 
 
-def get_job(job_id: str) -> JobResponse | None:
+def get_job(job_id: str, user: CurrentUser) -> JobResponse | None:
+    """None when the job does not exist OR belongs to someone else (the caller answers 404)."""
     job = repo.find_job(job_id)
-    return None if job is None else _to_job_response(job)
+    if job is None or not permissions.can_access(user, job.get("created_by")):
+        return None
+    return _to_job_response(job)
 
 
-def get_job_detail(job_id: str) -> JobDetailResponse | None:
-    summary = get_job(job_id)
+def get_job_detail(job_id: str, user: CurrentUser) -> JobDetailResponse | None:
+    summary = get_job(job_id, user)
     if summary is None:
         return None
     items = [JobItemResponse(**i) for i in repo.list_items(job_id)]
     return JobDetailResponse(**summary.model_dump(), items=items)
 
 
-def get_job_results(job_id: str) -> list[JobResultResponse] | None:
-    if repo.find_job(job_id) is None:
+def get_job_results(job_id: str, user: CurrentUser) -> list[JobResultResponse] | None:
+    if get_job(job_id, user) is None:
         return None
     return [JobResultResponse(**i) for i in repo.list_items(job_id)]

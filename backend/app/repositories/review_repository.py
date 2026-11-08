@@ -3,9 +3,13 @@ from app.core.ids import to_object_id
 from app.repositories import job_repository
 
 
-def list_results(review_status: str, job_id: str | None = None) -> list[dict]:
+def list_results(
+    review_status: str, job_id: str | None = None, created_by: str | None = None
+) -> list[dict]:
     """The review queue and its siblings: results with a given review status, lowest score first."""
     query: dict = {"review_status": review_status}
+    if created_by is not None:
+        query["created_by"] = created_by
     if job_id is not None:
         oid = to_object_id(job_id)
         if oid is None:

@@ -6,6 +6,7 @@ from app.main import app
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
 ALLOWED_ERROR_KEYS = {"code", "message", "details", "request_id"}
+ADMIN = {"X-Mock-User-Id": "admin_1", "X-Mock-Role": "admin"}
 
 
 def _create(ids=("DOC-001",)):
@@ -59,7 +60,7 @@ def test_unknown_route_and_wrong_method_use_the_contract_format():
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "NOT_FOUND"
 
-    wrong_method = client.delete("/api/v1/audit-log")
+    wrong_method = client.delete("/api/v1/audit-logs")
     assert wrong_method.status_code == 405
     assert wrong_method.json()["error"]["code"] == "METHOD_NOT_ALLOWED"
 
@@ -69,7 +70,7 @@ def test_every_error_body_contains_only_documented_keys():
         client.get("/api/v1/extraction-jobs/JOB-NOPE"),
         client.post("/api/v1/extraction-jobs/JOB-NOPE/process"),
         client.post("/api/v1/extraction-jobs", json={}),
-        client.delete("/api/v1/audit-log"),
+        client.delete("/api/v1/audit-logs"),
     ]
     for response in responses:
         body = response.json()
@@ -78,8 +79,8 @@ def test_every_error_body_contains_only_documented_keys():
 
 
 def test_paginated_lists_use_page_and_page_size():
-    for path in ("/api/v1/extraction-jobs", "/api/v1/audit-log"):
-        body = client.get(path).json()
+    for path in ("/api/v1/extraction-jobs", "/api/v1/audit-logs"):
+        body = client.get(path, headers=ADMIN).json()
         assert {"items", "total", "page", "page_size"} <= set(body)
         assert "limit" not in body and "offset" not in body
         assert (body["page"], body["page_size"]) == (1, 20)

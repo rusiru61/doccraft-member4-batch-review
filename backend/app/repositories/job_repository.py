@@ -118,8 +118,10 @@ def update_item(result_id: str, fields: dict) -> None:
     get_db().extraction_results.update_one({"_id": oid}, {"$set": fields})
 
 
-def list_finalized(job_id: str | None) -> list[dict]:
+def list_finalized(job_id: str | None, created_by: str | None = None) -> list[dict]:
     query: dict = {"review_status": {"$in": ["not_required", "approved"]}}
+    if created_by is not None:
+        query["created_by"] = created_by
     if job_id:
         oid = to_object_id(job_id)
         if oid is None:
@@ -129,8 +131,14 @@ def list_finalized(job_id: str | None) -> list[dict]:
     return [result_from_doc(d) for d in rows]
 
 
-def list_jobs_page(status: str | None, limit: int, offset: int) -> tuple[list[dict], int]:
-    query = {"status": status} if status else {}
+def list_jobs_page(
+    status: str | None, limit: int, offset: int, created_by: str | None = None
+) -> tuple[list[dict], int]:
+    query: dict = {}
+    if status:
+        query["status"] = status
+    if created_by is not None:
+        query["created_by"] = created_by
     collection = get_db().extraction_jobs
     rows = (
         collection.find(query)

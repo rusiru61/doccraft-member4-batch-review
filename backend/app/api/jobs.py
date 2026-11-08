@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Response
 
 from app.core.errors import ApiError
-from app.integrations.auth_service import CurrentUser, get_current_user
+from app.integrations.auth_service import CurrentUser, require_roles
 from app.integrations.document_provider import DocumentProvider, get_document_provider
 from app.integrations.mapping_provider import MappingProvider, get_mapping_provider
 from app.integrations.output_service import OutputService, get_output_service
@@ -10,7 +10,9 @@ from app.schemas.history import JobHistoryPage
 from app.schemas.job import (
     JobCreate, JobDetailResponse, JobResponse, JobResultResponse, JobStatus,
 )
-from app.services import finalize_service, history_service, job_service, processing_service
+from app.services import (
+    finalize_service, history_service, job_service, permissions, processing_service,
+)
 from app.services.finalize_service import JobNotFinalizableError, ReviewsPendingError
 from app.services.job_service import InvalidJobReferenceError
 from app.services.processing_service import (
@@ -32,7 +34,7 @@ def create_job(
     provider: DocumentProvider = Depends(get_document_provider),
     templates: TemplateProvider = Depends(get_template_provider),
     mappings: MappingProvider = Depends(get_mapping_provider),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_roles(*permissions.CREATE_JOBS)),
 ):
     """Create a job. By default it is queued for processing right away (202).
     With start=false it is only created (201) and can be started later."""
@@ -60,29 +62,36 @@ def list_jobs(
     status: JobStatus | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    user: CurrentUser = Depends(require_roles(*permissions.VIEW_RESULTS)),
 ):
-    """Past and current jobs, newest first. This is the job history."""
-    return history_service.get_history(status, page, page_size)
+    """Your jobs, newest first (admins see everyone's). This is the job history."""
+    return history_service.get_history(status, page, page_size, permissions.owner_scope(user))
 
 
 @router.get("/{job_id}", response_model=JobDetailResponse)
-def get_job(job_id: str):
-    job = job_service.get_job_detail(job_id)
+def get_job(
+    job_id: str, user: CurrentUser = Depends(require_roles(*permissions.VIEW_RESULTS))
+):
+    job = job_service.get_job_detail(job_id, user)
     if job is None:
         raise _not_found()
     return job
 
 
 @router.get("/{job_id}/results", response_model=list[JobResultResponse])
-def get_job_results(job_id: str):
-    results = job_service.get_job_results(job_id)
+def get_job_results(
+    job_id: str, user: CurrentUser = Depends(require_roles(*permissions.VIEW_RESULTS))
+):
+    results = job_service.get_job_results(job_id, user)
     if results is None:
         raise _not_found()
     return results
 
 
 @router.post("/{job_id}/process", status_code=202)
-def process_job(job_id: str, user: CurrentUser = Depends(get_current_user)):
+def process_job(
+    job_id: str, user: CurrentUser = Depends(require_roles(*permissions.CREATE_JOBS))
+):
     """Start a job that was created with start=false."""
     try:
         processing_service.start_processing(job_id, user, enqueue_job_processing)
@@ -98,7 +107,7 @@ def process_job(job_id: str, user: CurrentUser = Depends(get_current_user)):
 @router.post("/{job_id}/finalize", response_model=JobResponse)
 def finalize_job(
     job_id: str,
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_roles(*permissions.FINALIZE)),
     output_service: OutputService = Depends(get_output_service),
 ):
     """Close the job once every result has been reviewed, then request delivery."""

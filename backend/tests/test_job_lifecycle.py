@@ -7,6 +7,7 @@ from app.main import app
 pytestmark = pytest.mark.usefixtures("clean_test_db")
 client = TestClient(app)
 TEN_DOCS = [f"DOC-{n:03d}" for n in range(1, 11)]
+ADMIN = {"X-Mock-User-Id": "admin_1", "X-Mock-Role": "admin"}
 
 
 class _FakeOutput:
@@ -147,9 +148,11 @@ def test_finalizing_is_audited_once(output):
     job_id = _process(["DOC-001"])
     _finalize(job_id)
     _finalize(job_id)  # rejected, so it must not be audited
-    page = client.get("/api/v1/audit-log", params={"action": "job.finalized"}).json()
+    page = client.get(
+        "/api/v1/audit-logs", params={"action": "job.finalized"}, headers=ADMIN
+    ).json()
     assert page["total"] == 1
-    assert page["items"][0]["entity_id"] == job_id
+    assert page["items"][0]["resource_id"] == job_id
 
 
 def test_job_list_is_the_job_history():
