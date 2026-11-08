@@ -26,7 +26,7 @@ def test_expected_indexes_exist():
     results = db.extraction_results.index_information()
     assert "job_id_1_document_id_1" in results
     assert "review_status_1_reliability_score_1_created_at_1" in results
-    assert "audit_id_1" in db.audit_logs.index_information()
+    assert "resource_type_1_resource_id_1_timestamp_-1" in db.audit_logs.index_information()
 
 
 def test_a_document_can_appear_only_once_per_job():
@@ -38,11 +38,11 @@ def test_a_document_can_appear_only_once_per_job():
     results.insert_one({"job_id": ObjectId(), "document_id": "DOC-001"})  # another job is fine
 
 
-def test_audit_ids_are_unique():
+def test_audit_log_has_no_unique_business_key():
     audit = get_db().audit_logs
-    audit.insert_one({"audit_id": "AUD-1"})
-    with pytest.raises(DuplicateKeyError):
-        audit.insert_one({"audit_id": "AUD-1"})
+    audit.insert_one({"action": "x"})
+    audit.insert_one({"action": "x"})  # must not collide: entries are identified by _id
+    assert audit.count_documents({}) == 2
 
 
 

@@ -37,7 +37,11 @@ def test_queue_outage_returns_503_and_leaves_job_pending(monkeypatch):
         assert client.post(f"/api/v1/extraction-jobs/{job_id}/process").status_code == 503
 
     assert client.get(f"/api/v1/extraction-jobs/{job_id}").json()["status"] == "queued"
-    started = client.get("/api/v1/audit-log", params={"action": "job.processing_started"}).json()
+    started = client.get(
+        "/api/v1/audit-logs",
+        params={"action": "job.processing_started"},
+        headers={"X-Mock-Role": "admin"},
+    ).json()
     assert started["total"] == 0  # nothing happened, so nothing is audited
 
     # Once the queue is back, the same job can be started normally.
