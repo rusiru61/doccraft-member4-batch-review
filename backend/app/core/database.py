@@ -34,6 +34,8 @@ def ensure_indexes() -> None:
     # The finalized-results handoff.
     db.extraction_results.create_index([("review_status", ASCENDING), ("finalized_at", ASCENDING)])
 
-    db.audit_logs.create_index("audit_id", unique=True)
     db.audit_logs.create_index([("timestamp", DESCENDING)])
+    db.audit_logs.create_index(
+        [("resource_type", ASCENDING), ("resource_id", ASCENDING), ("timestamp", DESCENDING)]
+    )
     db.audit_logs.create_index("job_id")

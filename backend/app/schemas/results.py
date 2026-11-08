@@ -10,6 +10,7 @@ class FinalField(BaseModel):
     value: str | None
     status: str  # extracted, missing, invalid, or corrected
 
+
 class FinalizedResult(BaseModel):
     result_id: str
     job_id: str

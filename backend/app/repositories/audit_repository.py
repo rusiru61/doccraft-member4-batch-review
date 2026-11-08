@@ -9,7 +9,7 @@ def list_entries(filters: dict, limit: int, offset: int) -> tuple[list[dict], in
     query = {k: v for k, v in filters.items() if v is not None}
     collection = get_db().audit_logs
     rows = list(
-        collection.find(query, {"_id": 0})
+        collection.find(query)
         # _id grows with insertion order, so it breaks ties between entries made in the same millisecond
         .sort([("timestamp", -1), ("_id", -1)])
         .skip(offset)

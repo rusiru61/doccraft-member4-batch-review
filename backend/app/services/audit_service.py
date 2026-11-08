@@ -1,47 +1,56 @@
 from datetime import datetime, timezone
-from uuid import uuid4
 
 from app.repositories import audit_repository as repo
 from app.schemas.audit import AuditAction, AuditEntry, AuditLogPage
 
 
 def record(
-    user_id: str,
+    actor_user_id: str,
     action: AuditAction,
-    entity_type: str,
-    entity_id: str,
+    resource_type: str,
+    resource_id: str,
     job_id: str | None = None,
-    details: dict | None = None,
+    changed_fields: list[str] | None = None,
+    safe_metadata: dict | None = None,
 ) -> None:
+    """Append one audit entry. Field IDs only: never document contents, secrets or headers."""
     repo.insert_entry(
         {
-            "audit_id": f"AUD-{uuid4().hex[:12].upper()}",
             "timestamp": datetime.now(timezone.utc),
-            "user_id": user_id,
+            "actor_user_id": actor_user_id,
             "action": action.value,
-            "entity_type": entity_type,
-            "entity_id": entity_id,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
             "job_id": job_id,
-            "details": details or {},
+            "changed_fields": changed_fields or [],
+            "safe_metadata": safe_metadata or {},
         }
     )
 
 
+def _to_entry(doc: dict) -> AuditEntry:
+    doc = dict(doc)
+    doc["audit_id"] = str(doc.pop("_id"))
+    return AuditEntry(**doc)
+
+
 def get_log(
-    user_id: str | None,
+    actor_user_id: str | None,
     action: AuditAction | None,
+    resource_type: str | None,
+    resource_id: str | None,
     job_id: str | None,
-    entity_id: str | None,
     page: int,
     page_size: int,
 ) -> AuditLogPage:
     filters = {
-        "user_id": user_id,
+        "actor_user_id": actor_user_id,
         "action": action.value if action else None,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
         "job_id": job_id,
-        "entity_id": entity_id,
     }
     rows, total = repo.list_entries(filters, page_size, (page - 1) * page_size)
     return AuditLogPage(
-        total=total, page=page, page_size=page_size, items=[AuditEntry(**r) for r in rows]
+        total=total, page=page, page_size=page_size, items=[_to_entry(r) for r in rows]
     )

@@ -7,20 +7,21 @@ from pydantic import BaseModel
 class AuditAction(str, Enum):
     job_created = "job.created"
     processing_started = "job.processing_started"
+    job_finalized = "job.finalized"
     fields_corrected = "review.fields_corrected"
     result_approved = "review.result_approved"
-    job_finalized = "job.finalized"
 
 
 class AuditEntry(BaseModel):
     audit_id: str
     timestamp: datetime
-    user_id: str
+    actor_user_id: str
     action: AuditAction
-    entity_type: str
-    entity_id: str
+    resource_type: str
+    resource_id: str
     job_id: str | None
-    details: dict
+    changed_fields: list[str]
+    safe_metadata: dict
 
 
 class AuditLogPage(BaseModel):
