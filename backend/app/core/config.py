@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "DocCraft Member 4 - Batch & Review"
     environment: str = "development"
     mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_db_name: str = "doccraft_member4"
+    mongodb_db_name: str = "document_extraction"
     reliability_threshold: float = 0.80
     mock_processing_delay_seconds: float = 0.5
     redis_url: str = "redis://127.0.0.1:6379/0"

@@ -29,3 +29,21 @@ Reliability Score = (OCR × 0.3) + (AI Confidence × 0.5) + (Validation × 0.2)
 - **OCR (0.3):** OCR confidence measures text recognition quality, but recognized text may still contain extraction errors, so it receives a moderate weight.
 - **AI Confidence (0.5):** AI confidence is the most direct indicator of extraction quality and therefore carries the highest weight.
 - **Validation (0.2):** Validation confirms whether extracted data satisfies predefined rules, providing an additional verification layer but not replacing extraction confidence.
+
+## Run with Docker
+
+From the repository root:
+
+    docker compose up --build
+
+- API: http://localhost:8000/docs
+- Health: http://localhost:8000/health and http://localhost:8000/health/db
+- MongoDB (for Compass): mongodb://localhost:27018
+
+Run the tests inside the container:
+
+    docker compose exec api python -m pytest
+
+Stop and wipe the database:
+
+    docker compose down -v
