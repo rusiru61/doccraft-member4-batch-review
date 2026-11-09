@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27018:27017"   # 27018 on your machine, so it does not clash with a local MongoDB
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment: &backend-env
+      ENVIRONMENT: development
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB_NAME: document_extraction
+      REDIS_URL: redis://redis:6379/0
+      MOCK_PROCESSING_DELAY_SECONDS: "0.5"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: celery -A app.core.celery_app:celery_app worker -Q p1_high,p2_medium,p3_low --loglevel=info --pool=solo
+    environment: *backend-env
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
